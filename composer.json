@@ -1,0 +1,24 @@
+{
+    "name": "titon/model",
+    "type": "library",
+    "description": "",
+    "keywords": ["titon"],
+    "homepage": "http://titon.io",
+    "license": "BSD-2",
+    "authors": [
+        {
+            "name": "Miles Johnson",
+            "homepage": "http://milesj.me"
+        }
+    ],
+    "require": {
+        "php": ">=5.4.0",
+        "titon/db": "*"
+    },
+    "require-dev": {
+        "titon/test": "*"
+    },
+    "autoload": {
+        "psr-0": { "Titon\\Model": "src/" }
+    }
+}

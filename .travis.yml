@@ -1,0 +1,13 @@
+language: php
+
+php:
+  - 5.4
+  - 5.5
+
+before_script:
+  - mysql -e 'CREATE DATABASE titon_test;'
+  - composer selfupdate
+  - composer install
+
+notifications:
+  email: false
