@@ -11,13 +11,13 @@ use Titon\Common\Traits\Instanceable;
 use Titon\Common\Traits\Mutable;
 use Titon\Db\Behavior;
 use Titon\Db\Callback;
+use Titon\Db\Entity;
 use Titon\Db\Query;
 use Titon\Db\Table;
 use Titon\Db\Traits\TableAware;
 use Titon\Event\Event;
 use Titon\Event\Listener;
 use Titon\Model\Exception\MissingPrimaryKeyException;
-use Titon\Utility\Hash;
 use \Closure;
 use \ArrayAccess;
 use \Countable;
@@ -115,6 +115,35 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     protected $table = '';
 
     /**
+     * Validation rules.
+     *
+     * @type array
+     */
+    protected $validation = [];
+
+    /**
+     * List of validation errors.
+     *
+     * @type array
+     */
+    protected $_errors = [];
+
+    /**
+     * Whether the current record exists.
+     * Will be set after a find(), save() or delete().
+     *
+     * @type bool
+     */
+    protected $_exists = false;
+
+    /**
+     * Validator instance.
+     *
+     * @type \Titon\Utility\Validator
+     */
+    protected $_validator;
+
+    /**
      * Initiate the model and create a new table object based on model settings.
      * Optionally allow row data to be set.
      *
@@ -182,7 +211,23 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
             throw new MissingPrimaryKeyException(sprintf('Cannot delete %s record if no ID is present', get_class($this)));
         }
 
-        return $this->getTable()->delete($id, $options);
+        if ($this->getTable()->delete($id, $options)) {
+            $this->remove($this->primaryKey);
+            $this->setExists(false);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Return a boolean on whether the current record exists.
+     *
+     * @return bool
+     */
+    public function exists() {
+        return $this->_exists;
     }
 
     /**
@@ -214,6 +259,8 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      */
     public function flush() {
         $this->_data = [];
+        $this->_exists = false;
+        $this->_errors = [];
 
         return $this;
     }
@@ -335,19 +382,39 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      */
     public function save(array $options = []) {
         $data = $this->toArray();
+        $id = 0;
 
-        if (!$data) {
-            return 0;
+        if ($data && ($id = $this->getTable()->upsert($data, null, $options))) {
+            $this->setExists(true);
+            $this->set($this->primaryKey, $id);
+        } else {
+            $this->setExists(false);
         }
 
-        return $this->getTable()->upsert($data, null, $options);
+        return $id;
     }
 
     /**
-     * @see \Titon\Db\Table::createTable()
+     * Set record existence. This should only be called internally!
+     *
+     * @param bool $state
+     * @return \Titon\Model\Model
      */
-    public static function create(array $options = [], array $attributes = []) {
-        return self::getInstance()->getTable()->createTable($options, $attributes);
+    public function setExists($state) {
+        $this->_exists = (bool) $state;
+
+        return $this;
+    }
+
+    /**
+     * Return the current active record as an entity.
+     *
+     * @return \Titon\Db\Entity
+     */
+    public function toEntity() {
+        $entity = $this->entity;
+
+        return new $entity($this->toArray());
     }
 
     /**
@@ -358,10 +425,30 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     }
 
     /**
+     * Will attempt to find a record by ID and return a model instance with data pre-filled.
+     * If no record can be found, an empty model instance will be returned.
+     *
      * @see \Titon\Db\Table::read()
+     *
+     * @param int $id
+     * @param mixed $options
+     * @param \Closure $callback
+     * @return \Titon\Model\Model
      */
     public static function find($id, $options = true, Closure $callback = null) {
-        return self::getInstance()->getTable()->read($id, $options, $callback);
+        /** @type \Titon\Model\Model $instance */
+        $instance = new static();
+
+        if ($record = self::getInstance()->getTable()->read($id, $options, $callback)) {
+            if ($record instanceof Entity) {
+                $record = $record->toArray();
+            }
+
+            $instance->add($record);
+            $instance->setExists(true);
+        }
+
+        return $instance;
     }
 
     /**
@@ -398,7 +485,7 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      * @return bool
      */
     public static function truncate() {
-        return (bool) self::getInstance()->getTable()->query(Query::TRUNCATE)->save();
+        return (bool) self::query(Query::TRUNCATE)->save();
     }
 
     /**
