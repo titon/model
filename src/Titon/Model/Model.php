@@ -18,6 +18,7 @@ use Titon\Db\Traits\TableAware;
 use Titon\Event\Event;
 use Titon\Event\Listener;
 use Titon\Model\Exception\MissingPrimaryKeyException;
+use Titon\Utility\Hash;
 use \Closure;
 use \ArrayAccess;
 use \Countable;
@@ -150,6 +151,9 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      * @param array $data
      */
     public function __construct(array $data = []) {
+        $this->fill($data);
+
+        // Load table
         $table = new Table([
             'connection' => $this->connection,
             'table' => $this->table,
@@ -159,18 +163,16 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
             'entity' => $this->entity
         ]);
 
-        // Register events
         $table->on('model', $this);
 
-        // Set relations
-        foreach (['hasOne', 'hasMany', 'belongsTo', 'belongsToMany'] as $relationType) {
-            foreach ($this->{$relationType} as $key => $relation) {
-                $this->{$key} = call_user_func_array([$table, $relationType], [$key] + (array) $relation);
-            }
-        }
-
-        $this->fill($data);
         $this->setTable($table);
+
+        // Set relations
+        //$this->_loadBelongsTo();
+        //$this->_loadBelongsToMany();
+        //$this->_loadHasOne();
+        //$this->_loadHasMany();
+
         $this->initialize();
     }
 
@@ -500,6 +502,86 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      */
     public static function updateMany(array $data, Closure $conditions, array $options = []) {
         return self::getInstance()->getTable()->updateMany($data, $conditions, $options);
+    }
+
+    /**
+     * Load many-to-one relations.
+     */
+    protected function _loadBelongsTo() {
+        foreach ($this->belongsTo as $alias => $relation) {
+            if (Hash::isNumeric(array_keys($relation))) {
+                list($class, $foreignKey) = $relation;
+
+            } else {
+                $class = $relation['class'];
+                $foreignKey = $relation['foreignKey'];
+            }
+
+            $this->belongsTo($alias, (new $class)->getTable(), $foreignKey);
+        }
+    }
+
+    /**
+     * Load many-to-many relations.
+     */
+    protected function _loadBelongsToMany() {
+        foreach ($this->belongsToMany as $alias => $relation) {
+            if (Hash::isNumeric(array_keys($relation))) {
+                list($class, $junction, $foreignKey, $relatedKey) = $relation;
+
+            } else {
+                $class = $relation['class'];
+                $junction = $relation['junction'];
+                $foreignKey = $relation['foreignKey'];
+                $relatedKey = $relation['relatedKey'];
+            }
+
+            $this->belongsToMany($alias, (new $class)->getTable(), $junction, $foreignKey, $relatedKey);
+        }
+    }
+
+    /**
+     * Load one-to-one relations.
+     */
+    protected function _loadHasOne() {
+        foreach ($this->hasOne as $alias => $relation) {
+            $dependent = isset($relation['dependent']) ? $relation['dependent'] : true;
+            unset($relation['dependent']);
+
+            if (Hash::isNumeric(array_keys($relation))) {
+                list($class, $relatedKey) = $relation;
+
+            } else {
+                $class = $relation['class'];
+                $relatedKey = $relation['relatedKey'];
+            }
+
+            //print_r(new $class);
+
+            $relation = $this->hasOne($alias, (new $class)->getTable(), $relatedKey);
+            $relation->setDependent($dependent);
+        }
+    }
+
+    /**
+     * Load one-to-many relations.
+     */
+    protected function _loadHasMany() {
+        foreach ($this->hasMany as $alias => $relation) {
+            $dependent = isset($relation['dependent']) ? $relation['dependent'] : true;
+            unset($relation['dependent']);
+
+            if (Hash::isNumeric(array_keys($relation))) {
+                list($class, $relatedKey) = $relation;
+
+            } else {
+                $class = $relation['class'];
+                $relatedKey = $relation['relatedKey'];
+            }
+
+            $relation = $this->hasMany($alias, (new $class)->getTable(), $relatedKey);
+            $relation->setDependent($dependent);
+        }
     }
 
 }

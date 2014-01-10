@@ -7,6 +7,7 @@
 
 namespace Titon\Model;
 
+use Titon\Db\Behavior\TimestampableBehavior;
 use Titon\Test\Stub\Model\Profile;
 use Titon\Test\Stub\Model\User;
 use Titon\Test\TestCase;
@@ -17,8 +18,14 @@ use \Exception;
  */
 class ModelTest extends TestCase {
 
+    /**
+     * Test behaviors are passed to the table layer.
+     */
     public function testAddBehavior() {
+        $user = new User();
+        $user->addBehavior(new TimestampableBehavior());
 
+        $this->assertTrue($user->getTable()->hasBehavior('Timestampable'));
     }
 
     public function testAddRelations() {
@@ -64,7 +71,7 @@ class ModelTest extends TestCase {
      * Test that direct record deletion works correctly.
      */
     public function testDelete() {
-        $this->loadFixtures('Users');
+        $this->loadFixtures('Users', 'Profiles');
 
         $user = User::find(1);
 
