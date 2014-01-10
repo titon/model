@@ -16,6 +16,7 @@ use Titon\Db\Table;
 use Titon\Db\Traits\TableAware;
 use Titon\Event\Event;
 use Titon\Event\Listener;
+use Titon\Model\Exception\MissingPrimaryKeyException;
 use Titon\Utility\Hash;
 use \Closure;
 use \ArrayAccess;
@@ -28,6 +29,20 @@ use \Iterator;
  */
 class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     use Mutable, Instanceable, TableAware;
+
+    /**
+     * Mapping of many-to-one relations.
+     *
+     * @type array
+     */
+    protected $belongsTo = [];
+
+    /**
+     * Mapping of many-to-many relations.
+     *
+     * @type array
+     */
+    protected $belongsToMany = [];
 
     /**
      * The connection driver key.
@@ -56,6 +71,27 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      * @type string[]
      */
     protected $fillable = [];
+
+    /**
+     * Column names that are not fillable. If the value is [*], then all columns are guarded.
+     *
+     * @type string[]
+     */
+    protected $guarded = [];
+
+    /**
+     * Mapping of one-to-one relations.
+     *
+     * @type array
+     */
+    protected $hasOne = [];
+
+    /**
+     * Mapping of one-to-many relations.
+     *
+     * @type array
+     */
+    protected $hasMany = [];
 
     /**
      * Prefix to prepend to the table name.
@@ -97,6 +133,13 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
         // Register events
         $table->on('model', $this);
 
+        // Set relations
+        foreach (['hasOne', 'hasMany', 'belongsTo', 'belongsToMany'] as $relationType) {
+            foreach ($this->{$relationType} as $key => $relation) {
+                $this->{$key} = call_user_func_array([$table, $relationType], [$key] + (array) $relation);
+            }
+        }
+
         $this->fill($data);
         $this->setTable($table);
         $this->initialize();
@@ -124,18 +167,42 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     }
 
     /**
+     * Delete the record that as currently present in the model instance.
+     *
+     * @see \Titon\Db\Table::delete()
+     *
+     * @param mixed $options
+     * @return bool
+     * @throws \Titon\Model\Exception\MissingPrimaryKeyException
+     */
+    public function delete($options = true) {
+        $id = $this->get($this->primaryKey);
+
+        if (!$id) {
+            throw new MissingPrimaryKeyException(sprintf('Cannot delete %s record if no ID is present', get_class($this)));
+        }
+
+        return $this->getTable()->delete($id, $options);
+    }
+
+    /**
      * Fill the model with data to be sent to the database layer.
-     * Only columns within $fillable will be set, unless the property is empty.
      *
      * @param array $data
      * @return \Titon\Model\Model
      */
     public function fill(array $data) {
-        if ($this->fillable) {
-            $data = Hash::reduce($data, $this->fillable);
+        $this->flush();
+
+        if ($this->isFullyGuarded() || !$data) {
+            return $this;
         }
 
-        $this->flush()->add($data);
+        foreach ($data as $key => $value) {
+            if ($this->isFillable($key) && !$this->isGuarded($key)) {
+                $this->set($key, $value);
+            }
+        }
 
         return $this;
     }
@@ -170,6 +237,35 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      */
     public function initialize() {
         return;
+    }
+
+    /**
+     * Check if a column is fillable. It's fillable if the array is empty, or the column name is in the list.
+     *
+     * @param string $key
+     * @return bool
+     */
+    public function isFillable($key) {
+        return (!$this->fillable || in_array($key, $this->fillable));
+    }
+
+    /**
+     * Check to see if all columns are guarded.
+     *
+     * @return bool
+     */
+    public function isFullyGuarded() {
+        return ($this->guarded === ['*']);
+    }
+
+    /**
+     * Check if a column is guarded. It's guarded if the column is in the list, or if guarded is a * (all columns).
+     *
+     * @param string $key
+     * @return bool
+     */
+    public function isGuarded($key) {
+        return ($this->isFullyGuarded() || in_array($key, $this->guarded));
     }
 
     /**
@@ -232,6 +328,8 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      * Save a record to the database table using the data that has been set to the model.
      * Will return the record ID or 0 on failure.
      *
+     * @see \Titon\Db\Table::upsert()
+     *
      * @param array $options
      * @return int
      */
@@ -255,7 +353,7 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     /**
      * @see \Titon\Db\Table::delete()
      */
-    public static function delete($id, $options = true) {
+    public static function deleteBy($id, $options = true) {
         return self::getInstance()->getTable()->delete($id, $options);
     }
 
@@ -306,7 +404,7 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     /**
      * @see \Titon\Db\Table::update()
      */
-    public static function update($id, array $data, array $options = []) {
+    public static function updateBy($id, array $data, array $options = []) {
         return self::getInstance()->getTable()->update($id, $data, $options);
     }
 
