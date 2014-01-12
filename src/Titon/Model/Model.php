@@ -151,9 +151,6 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      * @param array $data
      */
     public function __construct(array $data = []) {
-        $this->fill($data);
-
-        // Load table
         $table = new Table([
             'connection' => $this->connection,
             'table' => $this->table,
@@ -165,14 +162,9 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
 
         $table->on('model', $this);
 
+        $this->fill($data);
         $this->setTable($table);
-
-        // Set relations
-        //$this->_loadBelongsTo();
-        //$this->_loadBelongsToMany();
-        //$this->_loadHasOne();
-        //$this->_loadHasMany();
-
+        $this->loadRelationships();
         $this->initialize();
     }
 
@@ -186,15 +178,15 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     /**
      * @see \Titon\Db\Table::belongsTo()
      */
-    public function belongsTo($alias, $class, $foreignKey) {
-        return $this->getTable()->belongsTo($alias, $class, $foreignKey);
+    public function belongsTo($alias, $table, $foreignKey) {
+        return $this->getTable()->belongsTo($alias, $table, $foreignKey);
     }
 
     /**
      * @see \Titon\Db\Table::belongsToMany()
      */
-    public function belongsToMany($alias, $class, $junction, $foreignKey, $relatedKey) {
-        return $this->getTable()->belongsToMany($alias, $class, $junction, $foreignKey, $relatedKey);
+    public function belongsToMany($alias, $table, $junction, $foreignKey, $relatedKey) {
+        return $this->getTable()->belongsToMany($alias, $table, $junction, $foreignKey, $relatedKey);
     }
 
     /**
@@ -270,15 +262,15 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     /**
      * @see \Titon\Db\Table::hasOne()
      */
-    public function hasOne($alias, $class, $relatedKey) {
-        return $this->getTable()->hasOne($alias, $class, $relatedKey);
+    public function hasOne($alias, $table, $relatedKey) {
+        return $this->getTable()->hasOne($alias, $table, $relatedKey);
     }
 
     /**
      * @see \Titon\Db\Table::hasMany()
      */
-    public function hasMany($alias, $class, $relatedKey) {
-        return $this->getTable()->hasMany($alias, $class, $relatedKey);
+    public function hasMany($alias, $table, $relatedKey) {
+        return $this->getTable()->hasMany($alias, $table, $relatedKey);
     }
 
     /**
@@ -318,6 +310,20 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     }
 
     /**
+     * Load relationships by reflecting current model properties.
+     *
+     * @return \Titon\Model\Model
+     */
+    public function loadRelationships() {
+        $this->_loadBelongsTo();
+        $this->_loadBelongsToMany();
+        $this->_loadHasOne();
+        $this->_loadHasMany();
+
+        return $this;
+    }
+
+    /**
      * {@inheritdoc}
      */
     public function preDelete(Event $event, $id, &$cascade) {
@@ -327,7 +333,7 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     /**
      * {@inheritdoc}
      */
-    public function preFetch(Event $event, Query $query, $fetchType) {
+    public function preFind(Event $event, Query $query, $finder) {
         return true;
     }
 
@@ -348,7 +354,7 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     /**
      * {@inheritdoc}
      */
-    public function postFetch(Event $event, array &$results, $fetchType) {
+    public function postFind(Event $event, array &$results, $finder) {
         return;
     }
 
@@ -368,8 +374,8 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
             'db.postSave' => 'postSave',
             'db.preDelete' => 'preDelete',
             'db.postDelete' => 'postDelete',
-            'db.preFetch' => 'preFetch',
-            'db.postFetch' => 'postFetch'
+            'db.preFind' => 'preFind',
+            'db.postFind' => 'postFind'
         ];
     }
 
@@ -437,7 +443,7 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      * @param \Closure $callback
      * @return \Titon\Model\Model
      */
-    public static function find($id, $options = true, Closure $callback = null) {
+    public static function find($id, array $options = [], Closure $callback = null) {
         /** @type \Titon\Model\Model $instance */
         $instance = new static();
 
@@ -487,7 +493,7 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      * @return bool
      */
     public static function truncate() {
-        return (bool) self::query(Query::TRUNCATE)->save();
+        return self::getInstance()->getTable()->truncate();
     }
 
     /**
@@ -536,7 +542,7 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
                 $relatedKey = $relation['relatedKey'];
             }
 
-            $this->belongsToMany($alias, (new $class)->getTable(), $junction, $foreignKey, $relatedKey);
+            $this->belongsToMany($alias, (new $class)->getTable(), (new $junction)->getTable(), $foreignKey, $relatedKey);
         }
     }
 
@@ -555,8 +561,6 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
                 $class = $relation['class'];
                 $relatedKey = $relation['relatedKey'];
             }
-
-            //print_r(new $class);
 
             $relation = $this->hasOne($alias, (new $class)->getTable(), $relatedKey);
             $relation->setDependent($dependent);
