@@ -8,6 +8,8 @@
 namespace Titon\Model;
 
 use Titon\Db\Behavior\TimestampableBehavior;
+use Titon\Test\Stub\Model\Book;
+use Titon\Test\Stub\Model\Country;
 use Titon\Test\Stub\Model\Profile;
 use Titon\Test\Stub\Model\User;
 use Titon\Test\TestCase;
@@ -28,12 +30,26 @@ class ModelTest extends TestCase {
         $this->assertTrue($user->getTable()->hasBehavior('Timestampable'));
     }
 
-    public function testAddRelations() {
+    /**
+     * Test that relations are set from the property definitions.
+     */
+    public function testRelations() {
+        $user = new User();
 
-    }
+        $this->assertTrue($user->getTable()->hasRelation('Profile')); // has one
+        $this->assertTrue($user->getTable()->hasRelation('Country')); // belongs to
 
-    public function testInitRelations() {
+        $profile = new Profile();
 
+        $this->assertTrue($profile->getTable()->hasRelation('User')); // belongs to
+
+        $country = new Country();
+
+        $this->assertTrue($country->getTable()->hasRelation('Users')); // has many
+
+        $book = new Book();
+
+        $this->assertTrue($book->getTable()->hasRelation('Genres')); // belongs to many
     }
 
     /**

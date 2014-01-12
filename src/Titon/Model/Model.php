@@ -179,6 +179,11 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      * @see \Titon\Db\Table::belongsTo()
      */
     public function belongsTo($alias, $table, $foreignKey) {
+        $this->belongsTo[$alias] = [
+            'class' => $table,
+            'foreignKey' => $foreignKey
+        ];
+
         return $this->getTable()->belongsTo($alias, $table, $foreignKey);
     }
 
@@ -186,6 +191,13 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      * @see \Titon\Db\Table::belongsToMany()
      */
     public function belongsToMany($alias, $table, $junction, $foreignKey, $relatedKey) {
+        $this->belongsToMany[$alias] = [
+            'class' => $table,
+            'junction' => $junction,
+            'foreignKey' => $foreignKey,
+            'relatedKey' => $relatedKey
+        ];
+
         return $this->getTable()->belongsToMany($alias, $table, $junction, $foreignKey, $relatedKey);
     }
 
@@ -263,6 +275,11 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      * @see \Titon\Db\Table::hasOne()
      */
     public function hasOne($alias, $table, $relatedKey) {
+        $this->hasOne[$alias] = [
+            'class' => $table,
+            'relatedKey' => $relatedKey
+        ];
+
         return $this->getTable()->hasOne($alias, $table, $relatedKey);
     }
 
@@ -270,6 +287,11 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      * @see \Titon\Db\Table::hasMany()
      */
     public function hasMany($alias, $table, $relatedKey) {
+        $this->hasMany[$alias] = [
+            'class' => $table,
+            'relatedKey' => $relatedKey
+        ];
+
         return $this->getTable()->hasMany($alias, $table, $relatedKey);
     }
 
@@ -523,7 +545,7 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
                 $foreignKey = $relation['foreignKey'];
             }
 
-            $this->belongsTo($alias, (new $class)->getTable(), $foreignKey);
+            $this->belongsTo($alias, $class, $foreignKey);
         }
     }
 
@@ -542,7 +564,7 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
                 $relatedKey = $relation['relatedKey'];
             }
 
-            $this->belongsToMany($alias, (new $class)->getTable(), (new $junction)->getTable(), $foreignKey, $relatedKey);
+            $this->belongsToMany($alias, $class, $junction, $foreignKey, $relatedKey);
         }
     }
 
@@ -562,7 +584,7 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
                 $relatedKey = $relation['relatedKey'];
             }
 
-            $relation = $this->hasOne($alias, (new $class)->getTable(), $relatedKey);
+            $relation = $this->hasOne($alias, $class, $relatedKey);
             $relation->setDependent($dependent);
         }
     }
@@ -583,7 +605,7 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
                 $relatedKey = $relation['relatedKey'];
             }
 
-            $relation = $this->hasMany($alias, (new $class)->getTable(), $relatedKey);
+            $relation = $this->hasMany($alias, $class, $relatedKey);
             $relation->setDependent($dependent);
         }
     }
