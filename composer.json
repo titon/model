@@ -1,8 +1,8 @@
 {
     "name": "titon/model",
     "type": "library",
-    "description": "",
-    "keywords": ["titon"],
+    "description": "The Titon model package provides an active record style approach to database CRUD functionality.",
+    "keywords": ["titon", "model", "active", "record", "validation", "orm", "relation"],
     "homepage": "http://titon.io",
     "license": "BSD-2",
     "authors": [
@@ -16,7 +16,7 @@
         "titon/db": "*"
     },
     "require-dev": {
-        "titon/test": "*"
+        "titon/test": "dev-master"
     },
     "autoload": {
         "psr-0": { "Titon\\Model": "src/" }
