@@ -17,8 +17,10 @@ use Titon\Db\Table;
 use Titon\Db\Traits\TableAware;
 use Titon\Event\Event;
 use Titon\Event\Listener;
+use Titon\Event\Traits\Emittable;
 use Titon\Model\Exception\MissingPrimaryKeyException;
 use Titon\Utility\Hash;
+use Titon\Utility\Validator;
 use \Closure;
 use \ArrayAccess;
 use \Countable;
@@ -29,7 +31,7 @@ use \Iterator;
  * @method \Titon\Model\Model getInstance()
  */
 class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
-    use Mutable, Instanceable, TableAware;
+    use Mutable, Instanceable, TableAware, Emittable;
 
     /**
      * Mapping of many-to-one relations.
@@ -95,6 +97,13 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     protected $hasMany = [];
 
     /**
+     * Custom validation error messages.
+     *
+     * @type string[]
+     */
+    protected $messages = [];
+
+    /**
      * Prefix to prepend to the table name.
      *
      * @type string
@@ -120,12 +129,12 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      *
      * @type array
      */
-    protected $validation = [];
+    protected $validate = [];
 
     /**
      * List of validation errors.
      *
-     * @type array
+     * @type string[]
      */
     protected $_errors = [];
 
@@ -161,6 +170,7 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
         ]);
 
         $table->on('model', $this);
+        $this->on('model', $this);
 
         $this->fill($data);
         $this->setTable($table);
@@ -219,7 +229,7 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
 
         if ($this->getTable()->delete($id, $options)) {
             $this->remove($this->primaryKey);
-            $this->setExists(false);
+            $this->_setExists(false);
 
             return true;
         }
@@ -269,6 +279,28 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
         $this->_errors = [];
 
         return $this;
+    }
+
+    /**
+     * Return the validator errors.
+     *
+     * @return string[]
+     */
+    public function getErrors() {
+        return $this->_errors;
+    }
+
+    /**
+     * Return the validator instance.
+     *
+     * @return \Titon\Utility\Validator
+     */
+    public function getValidator() {
+        if (!$this->_validator) {
+            $this->setValidator(Validator::makeFromShorthand([], $this->validate));
+        }
+
+        return $this->_validator;
     }
 
     /**
@@ -367,6 +399,18 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     }
 
     /**
+     * Method called before validation occurs.
+     * Returning a boolean false will cease validation.
+     *
+     * @param \Titon\Event\Event $event
+     * @param \Titon\Utility\Validator $validator
+     * @return bool
+     */
+    public function preValidate(Event $event, Validator $validator) {
+        return true;
+    }
+
+    /**
      * {@inheritdoc}
      */
     public function postDelete(Event $event, $id) {
@@ -388,6 +432,16 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     }
 
     /**
+     * Method called after validation occurs.
+     *
+     * @param \Titon\Event\Event $event
+     * @param bool $passed
+     */
+    public function postValidate(Event $event, $passed = true) {
+        return;
+    }
+
+    /**
      * {@inheritdoc}
      */
     public function registerEvents() {
@@ -397,7 +451,9 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
             'db.preDelete' => 'preDelete',
             'db.postDelete' => 'postDelete',
             'db.preFind' => 'preFind',
-            'db.postFind' => 'postFind'
+            'db.postFind' => 'postFind',
+            'model.preValidate' => 'preValidate',
+            'model.postValidate' => 'postValidate'
         ];
     }
 
@@ -411,27 +467,34 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      * @return int
      */
     public function save(array $options = []) {
+        $options = $options + ['validate' => true];
+        $passed = $options['validate'] ? $this->validate() : true;
+
+        if (!$passed) {
+            return 0;
+        }
+
         $data = $this->toArray();
         $id = 0;
 
         if ($data && ($id = $this->getTable()->upsert($data, null, $options))) {
-            $this->setExists(true);
+            $this->_setExists(true);
             $this->set($this->primaryKey, $id);
         } else {
-            $this->setExists(false);
+            $this->_setExists(false);
         }
 
         return $id;
     }
 
     /**
-     * Set record existence. This should only be called internally!
+     * Set the validator instance.
      *
-     * @param bool $state
+     * @param \Titon\Utility\Validator $validator
      * @return \Titon\Model\Model
      */
-    public function setExists($state) {
-        $this->_exists = (bool) $state;
+    public function setValidator(Validator $validator) {
+        $this->_validator = $validator;
 
         return $this;
     }
@@ -448,6 +511,40 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     }
 
     /**
+     * Validate the current set of data against the models validation rules.
+     *
+     * @return bool
+     */
+    public function validate() {
+        $this->_errors = [];
+
+        // No rules
+        if (!$this->validate) {
+            return true;
+        }
+
+        $validator = $this->getValidator();
+        $validator->reset();
+        $validator->addMessages($this->messages);
+        $validator->setData($this->toArray());
+
+        $event = $this->emit('model.preValidate', [$validator]);
+        $state = $event->getData();
+
+        // Exit early if event has returned false
+        if ($state === false) {
+            return false;
+        }
+
+        $status = $validator->validate();
+        $this->_errors = $validator->getErrors();
+
+        $this->emit('model.postValidate', [$status]);
+
+        return $status;
+    }
+
+    /**
      * @see \Titon\Db\Table::delete()
      */
     public static function deleteBy($id, $options = true) {
@@ -461,21 +558,20 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      * @see \Titon\Db\Table::read()
      *
      * @param int $id
-     * @param mixed $options
-     * @param \Closure $callback
+     * @param array $options
      * @return \Titon\Model\Model
      */
-    public static function find($id, array $options = [], Closure $callback = null) {
+    public static function find($id, array $options = []) {
         /** @type \Titon\Model\Model $instance */
         $instance = new static();
 
-        if ($record = self::getInstance()->getTable()->read($id, $options, $callback)) {
+        if ($record = self::getInstance()->getTable()->read($id, $options)) {
             if ($record instanceof Entity) {
                 $record = $record->toArray();
             }
 
             $instance->add($record);
-            $instance->setExists(true);
+            $instance->_setExists(true);
         }
 
         return $instance;
@@ -534,6 +630,8 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
 
     /**
      * Load many-to-one relations.
+     *
+     * @return \Titon\Model\Model
      */
     protected function _loadBelongsTo() {
         foreach ($this->belongsTo as $alias => $relation) {
@@ -547,10 +645,14 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
 
             $this->belongsTo($alias, $class, $foreignKey);
         }
+
+        return $this;
     }
 
     /**
      * Load many-to-many relations.
+     *
+     * @return \Titon\Model\Model
      */
     protected function _loadBelongsToMany() {
         foreach ($this->belongsToMany as $alias => $relation) {
@@ -566,10 +668,14 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
 
             $this->belongsToMany($alias, $class, $junction, $foreignKey, $relatedKey);
         }
+
+        return $this;
     }
 
     /**
      * Load one-to-one relations.
+     *
+     * @return \Titon\Model\Model
      */
     protected function _loadHasOne() {
         foreach ($this->hasOne as $alias => $relation) {
@@ -587,10 +693,14 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
             $relation = $this->hasOne($alias, $class, $relatedKey);
             $relation->setDependent($dependent);
         }
+
+        return $this;
     }
 
     /**
      * Load one-to-many relations.
+     *
+     * @return \Titon\Model\Model
      */
     protected function _loadHasMany() {
         foreach ($this->hasMany as $alias => $relation) {
@@ -608,6 +718,20 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
             $relation = $this->hasMany($alias, $class, $relatedKey);
             $relation->setDependent($dependent);
         }
+
+        return $this;
+    }
+
+    /**
+     * Set record existence. This should only be called internally!
+     *
+     * @param bool $state
+     * @return \Titon\Model\Model
+     */
+    protected function _setExists($state) {
+        $this->_exists = (bool) $state;
+
+        return $this;
     }
 
 }
