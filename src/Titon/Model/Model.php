@@ -217,7 +217,7 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      * @see \Titon\Db\Table::delete()
      *
      * @param mixed $options
-     * @return bool
+     * @return int
      * @throws \Titon\Model\Exception\MissingPrimaryKeyException
      */
     public function delete($options = true) {
@@ -227,14 +227,14 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
             throw new MissingPrimaryKeyException(sprintf('Cannot delete %s record if no ID is present', get_class($this)));
         }
 
-        if ($this->getTable()->delete($id, $options)) {
+        if ($count = $this->getTable()->delete($id, $options)) {
             $this->remove($this->primaryKey);
             $this->_setExists(false);
 
-            return true;
+            return $count;
         }
 
-        return false;
+        return 0;
     }
 
     /**
@@ -550,7 +550,14 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      * @see \Titon\Db\Table::delete()
      */
     public static function deleteBy($id, $options = true) {
-        return self::getInstance()->getTable()->delete($id, $options);
+        return self::table()->delete($id, $options);
+    }
+
+    /**
+     * @see \Titon\Db\Table::deleteMany()
+     */
+    public static function deleteMany(Closure $conditions, $options = true) {
+        return self::table()->deleteMany($conditions, $options);
     }
 
     /**
@@ -567,7 +574,7 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
         /** @type \Titon\Model\Model $instance */
         $instance = new static();
 
-        if ($record = self::getInstance()->getTable()->read($id, $options)) {
+        if ($record = self::table()->read($id, $options)) {
             if ($record instanceof Entity) {
                 $record = $record->toArray();
             }
@@ -580,31 +587,52 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     }
 
     /**
+     * Return a count of records in the table.
+     *
+     * @param \Closure $conditions
+     * @return int
+     */
+    public static function total(Closure $conditions = null) {
+        return self::select()->bindCallback($conditions)->count();
+    }
+
+    /**
      * @see \Titon\Db\Table::create()
      */
     public static function insert(array $data, array $options = []) {
-        return self::getInstance()->getTable()->create($data, $options);
+        return self::table()->create($data, $options);
     }
 
     /**
      * @see \Titon\Db\Table::createMany()
      */
     public static function insertMany(array $data, $hasPk = false) {
-        return self::getInstance()->getTable()->createMany($data, $hasPk);
+        return self::table()->createMany($data, $hasPk);
     }
 
     /**
      * @see \Titon\Db\Table::query()
      */
-    public function query($type) {
-        return self::getInstance()->getTable()->query($type);
+    public static function query($type) {
+        return self::table()->query($type);
     }
 
     /**
      * @see \Titon\Db\Table::select()
+     *
+     * @return \Titon\Db\Query
      */
     public static function select() {
-        return self::getInstance()->getTable()->select(func_get_args());
+        return self::query(Query::SELECT)->fields(func_get_args());
+    }
+
+    /**
+     * Return the direct table instance.
+     *
+     * @return \Titon\Db\Table
+     */
+    public static function table() {
+        return self::getInstance(get_called_class())->getTable();
     }
 
     /**
@@ -613,21 +641,21 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      * @return bool
      */
     public static function truncate() {
-        return self::getInstance()->getTable()->truncate();
+        return self::table()->truncate();
     }
 
     /**
      * @see \Titon\Db\Table::update()
      */
     public static function updateBy($id, array $data, array $options = []) {
-        return self::getInstance()->getTable()->update($id, $data, $options);
+        return self::table()->update($id, $data, $options);
     }
 
     /**
      * @see \Titon\Db\Table::updateMany()
      */
     public static function updateMany(array $data, Closure $conditions, array $options = []) {
-        return self::getInstance()->getTable()->updateMany($data, $conditions, $options);
+        return self::table()->updateMany($data, $conditions, $options);
     }
 
     /**
