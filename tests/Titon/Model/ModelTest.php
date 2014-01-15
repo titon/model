@@ -150,7 +150,7 @@ class ModelTest extends TestCase {
         $user->username = 'mj';
         $user->modified = $time;
 
-        $this->assertEquals(1, $user->save()); // record of ID on success
+        $this->assertEquals(1, $user->save(['validate' => false])); // record of ID on success
 
         $this->assertArraysEqual([
             'id' => 1,
@@ -270,6 +270,43 @@ class ModelTest extends TestCase {
 
         $this->assertFalse($user->isFullyGuarded());
         $this->assertTrue($profile->isFullyGuarded());
+    }
+
+    /**
+     * Test that validation triggers.
+     */
+    public function testValidate() {
+        $this->loadFixtures('Users');
+
+        $user = new User();
+        $user->username = 'foo'; // needs to be 5
+
+        $this->assertEquals(0, $user->save());
+        $this->assertEquals([
+            'username' => 'Must be between 5 and 25 chars'
+        ], $user->getErrors());
+
+        $user->username = 'foobar'; // good!
+
+        $this->assertNotEquals(0, $user->save());
+        $this->assertEquals([], $user->getErrors());
+
+        $user->username = 'bar'; // ignore validation
+
+        $this->assertNotEquals(0, $user->save(['validate' => false]));
+        $this->assertEquals([], $user->getErrors());
+
+        // Now with multiple fields
+        $user->username = 'foo';
+        $user->firstName = 123;
+        $user->lastName = 'abc';
+
+        $this->assertEquals(0, $user->save());
+        $this->assertEquals([
+            'username' => 'Must be between 5 and 25 chars',
+            'firstName' => 'Must be alphabetical',
+            'lastName' => 'Must be a number'
+        ], $user->getErrors());
     }
 
 }

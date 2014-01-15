@@ -537,7 +537,9 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
         }
 
         $status = $validator->validate();
+
         $this->_errors = $validator->getErrors();
+        $this->_validator = null;
 
         $this->emit('model.postValidate', [$status]);
 

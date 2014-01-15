@@ -16,7 +16,11 @@
         "titon/db": "*"
     },
     "require-dev": {
-        "titon/test": "dev-master"
+        "titon/test": "dev-master",
+        "titon/db-mysql": "*",
+        "titon/db-postgresql": "*",
+        "titon/db-sqlite": "*",
+        "titon/db-mongodb": "*"
     },
     "autoload": {
         "psr-0": { "Titon\\Model": "src/" }
