@@ -19,14 +19,31 @@ use Titon\Test\Stub\Model\Series;
 use Titon\Test\Stub\Model\User;
 use Titon\Test\TestCase;
 
-// Do this outside of the test
-Registry::factory('Titon\Db\Connection')
-    ->addDriver(new MysqlDriver('default', Config::get('db')));
-
 /**
  * Test class for MySQL.
  */
 class DbMysqlTest extends TestCase {
+
+    /**
+     * Custom code to trigger a hook once.
+     *
+     * @param string $name
+     * @param array $data
+     * @param string $dataName
+     */
+    public function __construct($name = NULL, array $data = array(), $dataName = '') {
+        parent::__construct($name, $data, $dataName);
+
+        $this->setUpDb();
+    }
+
+    /**
+     * Setup the DB once, not before every test.
+     */
+    public function setUpDb() {
+        Registry::factory('Titon\Db\Connection')
+            ->addDriver(new MysqlDriver('default', Config::get('db')));
+    }
 
     /**
      * Test records are created.
@@ -205,7 +222,9 @@ class DbMysqlTest extends TestCase {
                     ]
                 ],
             ]
-        ], Book::select()->where('id', 16)->with('Genres')->fetch()->toArray());
+        ], Book::select()->where('id', 16)->with('Genres', function() {
+            $this->orderBy('id', 'asc');
+        })->fetch()->toArray());
     }
 
     /**
@@ -286,7 +305,9 @@ class DbMysqlTest extends TestCase {
         $actual = Series::select('id', 'name')
             ->where('id', 1)
             ->with('Books', function(Query $query) {
-                $query->with('Genres');
+                $query->orderBy('id', 'asc')->with('Genres', function() {
+                    $this->orderBy('id', 'asc');
+                });
             })
             ->fetch(['eager' => true]);
 
@@ -565,7 +586,7 @@ class DbMysqlTest extends TestCase {
 
         // No where clause
         $this->assertSame(5, User::updateMany(['country_id' => 2], function(Query $query) {
-            $query->where('country_id', '!=', '');
+            $query->where('country_id', '!=', 1000); // high number = all
         }));
 
         $this->assertEquals([
@@ -657,7 +678,9 @@ class DbMysqlTest extends TestCase {
                 'lastLogin' => '2012-06-24 17:30:33',
                 'currentLogin' => '2013-06-06 19:11:03',
             ]
-        ], User::select()->where('id', 1)->with('Profile')->fetch()->toArray());
+        ], User::select()->where('id', 1)->with('Profile', function() {
+            $this->orderBy('id', 'asc'); // multiple records exist now
+        })->fetch()->toArray());
     }
 
     /**
