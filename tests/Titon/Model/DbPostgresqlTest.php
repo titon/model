@@ -9,6 +9,10 @@ namespace Titon\Model;
 
 use Titon\Common\Registry;
 use Titon\Db\Pgsql\PgsqlDriver;
+use Titon\Test\Stub\Model\Book;
+use Titon\Test\Stub\Model\Profile;
+use Titon\Test\Stub\Model\Series;
+use Titon\Test\Stub\Model\User;
 
 /**
  * Test class for PostgreSQL.
@@ -18,7 +22,7 @@ class DbPostgresqlTest extends DbMysqlTest {
     /**
      * Setup the DB once, not before every test.
      */
-    public function setUpDb() {
+    public static function setUpBeforeClass() {
         Registry::factory('Titon\Db\Connection')
             ->addDriver(new PgsqlDriver('default', [
                 'database' => 'titon_test',
@@ -26,6 +30,12 @@ class DbPostgresqlTest extends DbMysqlTest {
                 'user' => 'postgres',
                 'pass' => getenv('TRAVIS') ? '' : 'test123'
             ]));
+
+        // Remove singletons
+        User::flushInstances();
+        Book::flushInstances();
+        Series::flushInstances();
+        Profile::flushInstances();
     }
 
 }

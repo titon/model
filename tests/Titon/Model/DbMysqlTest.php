@@ -25,24 +25,17 @@ use Titon\Test\TestCase;
 class DbMysqlTest extends TestCase {
 
     /**
-     * Custom code to trigger a hook once.
-     *
-     * @param string $name
-     * @param array $data
-     * @param string $dataName
-     */
-    public function __construct($name = NULL, array $data = array(), $dataName = '') {
-        parent::__construct($name, $data, $dataName);
-
-        $this->setUpDb();
-    }
-
-    /**
      * Setup the DB once, not before every test.
      */
-    public function setUpDb() {
+    public static function setUpBeforeClass() {
         Registry::factory('Titon\Db\Connection')
             ->addDriver(new MysqlDriver('default', Config::get('db')));
+
+        // Remove singletons
+        User::flushInstances();
+        Book::flushInstances();
+        Series::flushInstances();
+        Profile::flushInstances();
     }
 
     /**

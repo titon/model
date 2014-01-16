@@ -10,6 +10,10 @@ namespace Titon\Model;
 use Titon\Common\Registry;
 use Titon\Db\Query;
 use Titon\Db\Sqlite\SqliteDriver;
+use Titon\Test\Stub\Model\Book;
+use Titon\Test\Stub\Model\Profile;
+use Titon\Test\Stub\Model\Series;
+use Titon\Test\Stub\Model\User;
 
 /**
  * Test class for SQLite.
@@ -19,7 +23,7 @@ class DbSqliteTest extends DbMysqlTest {
     /**
      * Setup the DB once, not before every test.
      */
-    public function setUpDb() {
+    public static function setUpBeforeClass() {
         Registry::factory('Titon\Db\Connection')
             ->addDriver(new SqliteDriver('default', [
                 'database' => 'titon_test',
@@ -27,6 +31,12 @@ class DbSqliteTest extends DbMysqlTest {
                 'user' => 'root',
                 'pass' => ''
             ]));
+
+        // Remove singletons
+        User::flushInstances();
+        Book::flushInstances();
+        Series::flushInstances();
+        Profile::flushInstances();
     }
 
     /**

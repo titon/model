@@ -4,8 +4,13 @@ php:
   - 5.4
   - 5.5
 
+services:
+  - mongodb
+
 before_script:
+  - echo "extension = mongo.so" >> ~/.phpenv/versions/$(phpenv version-name)/etc/php.ini
   - mysql -e 'CREATE DATABASE titon_test;'
+  - psql -c 'CREATE DATABASE titon_test;' -U postgres
   - composer selfupdate
   - composer install
 
