@@ -19,20 +19,14 @@ use Titon\Test\Stub\Model\Series;
 use Titon\Test\Stub\Model\User;
 use Titon\Test\TestCase;
 
+// Do this outside of the test
+Registry::factory('Titon\Db\Connection')
+    ->addDriver(new MysqlDriver('default', Config::get('db')));
+
 /**
  * Test class for MySQL.
  */
 class DbMysqlTest extends TestCase {
-
-    /**
-     * Set the mysql driver.
-     */
-    protected function setUp() {
-        parent::setUp();
-
-        Registry::factory('Titon\Db\Connection')
-            ->addDriver(new MysqlDriver('default', Config::get('db')));
-    }
 
     /**
      * Test records are created.
@@ -725,6 +719,19 @@ class DbMysqlTest extends TestCase {
     }
 
     /**
+     * Test delete with where conditions.
+     */
+    public function testDeleteConditions() {
+        $this->loadFixtures('Users', 'Profiles');
+
+        $this->assertSame(5, User::total());
+        $this->assertSame(3, User::deleteMany(function() {
+            $this->where('age', '>', 30);
+        }));
+        $this->assertSame(2, User::total());
+    }
+
+    /**
      * Test multiple deletion through conditions.
      */
     public function testDeleteMany() {
@@ -777,6 +784,232 @@ class DbMysqlTest extends TestCase {
 
         $this->assertFalse($user->exists());
         $this->assertTrue(Profile::find(5)->exists());
+    }
+
+    /**
+     * Test that the record is created.
+     */
+    public function testUpsertNoId() {
+        $this->loadFixtures('Users');
+
+        $user = new User();
+        $user->username = 'ironman';
+
+        $this->assertFalse(User::find(6)->exists());
+
+        $this->assertEquals(6, $user->save());
+
+        $this->assertTrue(User::find(6)->exists());
+    }
+
+    /**
+     * Test that the record is updated if the ID exists in the data.
+     */
+    public function testUpsertWithId() {
+        $this->loadFixtures('Users');
+
+        $user = new User();
+        $user->id = 1;
+        $user->username = 'ironman';
+
+        $this->assertFalse(User::find(6)->exists());
+
+        $this->assertEquals(1, $user->save());
+
+        $this->assertFalse(User::find(6)->exists());
+    }
+
+    /**
+     * Test that the record is created if the ID doesn't exist.
+     */
+    public function testUpsertWithFakeId() {
+        $this->loadFixtures('Users');
+
+        $user = new User();
+        $user->id = 10;
+        $user->username = 'ironman';
+
+        $this->assertFalse(User::find(6)->exists());
+
+        $this->assertEquals(6, $user->save());
+
+        $this->assertTrue(User::find(6)->exists());
+    }
+
+    /**
+     * Test upserting for one-to-one relations.
+     */
+    public function testUpsertOneToOne() {
+        $this->loadFixtures(['Users', 'Profiles']);
+
+        $user = new User();
+        $time = time();
+
+        // Update
+        $this->assertEquals(new Entity([
+            'id' => 4,
+            'user_id' => 1,
+            'lastLogin' => '2012-02-15 21:22:34',
+            'currentLogin' => '2013-06-06 19:11:03'
+        ]), Profile::select()->where('id', 4)->fetch());
+
+        $user->id = 1;
+        $user->username = 'milesj';
+        $user->Profile = [
+            'id' => 4,
+            'lastLogin' => $time
+        ];
+
+        $this->assertEquals(1, $user->save());
+
+        $this->assertEquals(new Entity([
+            'id' => 4,
+            'user_id' => 1,
+            'lastLogin' => date('Y-m-d H:i:s', $time),
+            'currentLogin' => '2013-06-06 19:11:03'
+        ]), Profile::select()->where('id', 4)->fetch());
+
+        // Create
+        $this->assertFalse(Profile::find(6)->exists());
+
+        $user->Profile = [
+                'lastLogin' => $time
+        ];
+
+        $this->assertEquals(1, $user->save());
+
+        $this->assertEquals(new Entity([
+            'id' => 6,
+            'user_id' => 1,
+            'lastLogin' => date('Y-m-d H:i:s', $time),
+            'currentLogin' => null
+        ]), Profile::select()->where('id', 6)->fetch());
+    }
+
+
+    /**
+     * Test upserting for many-to-many relations.
+     */
+    public function testUpsertWithManyToMany() {
+        $this->loadFixtures(['Genres', 'Books', 'BookGenres']);
+
+        // Trigger lazy-loaded queries
+        $results = Book::select()->where('id', 10)->with('Genres')->fetch();
+        $results->Genres;
+
+        $this->assertEquals(new Entity([
+            'id' => 10,
+            'series_id' => 2,
+            'name' => 'Harry Potter and the Order of the Phoenix',
+            'isbn' => '0-7475-5100-6',
+            'released' => '2003-06-21',
+            'Genres' => [
+                new Entity([
+                    'id' => 2,
+                    'name' => 'Adventure',
+                    'book_count' => 7,
+                    'Junction' => new Entity([
+                        'id' => 29,
+                        'book_id' => 10,
+                        'genre_id' => 2
+                    ])
+                ]),
+                new Entity([
+                    'id' => 7,
+                    'name' => 'Mystery',
+                    'book_count' => 7,
+                    'Junction' => new Entity([
+                        'id' => 30,
+                        'book_id' => 10,
+                        'genre_id' => 7
+                    ])
+                ]),
+                new Entity([
+                    'id' => 8,
+                    'name' => 'Fantasy',
+                    'book_count' => 15,
+                    'Junction' => new Entity([
+                        'id' => 28,
+                        'book_id' => 10,
+                        'genre_id' => 8
+                    ])
+                ])
+            ]
+        ]), $results);
+
+        $book = new Book();
+        $book->id = 10;
+        $book->released = '2003-06-21'; // needs a field or it wont update
+        $book->Genres = [
+            ['id' => 2, 'name' => 'Adventure (Updated)'], // Updated
+            ['name' => 'Magic'], // Created
+            ['id' => 125, 'name' => 'Wizardry'], // Created because of invalid ID
+            ['genre_id' => 8, 'name' => 'Fantasy (Updated)'] // Updated because of direct foreign key
+        ];
+
+        $this->assertEquals(10, $book->save());
+
+        // Trigger lazy-loaded queries
+        $results = Book::select()->where('id', 10)->with('Genres', function() {
+            $this->orderBy('id', 'asc');
+        })->fetch();
+        $results->Genres;
+
+        $this->assertEquals([
+            'id' => 10,
+            'series_id' => 2,
+            'name' => 'Harry Potter and the Order of the Phoenix',
+            'isbn' => '0-7475-5100-6',
+            'released' => '2003-06-21',
+            'Genres' => [
+                [
+                    'id' => 2,
+                    'name' => 'Adventure (Updated)',
+                    'book_count' => 7,
+                    'Junction' => [
+                        'id' => 29,
+                        'book_id' => 10,
+                        'genre_id' => 2
+                    ]
+                ], [
+                    'id' => 7,
+                    'name' => 'Mystery',
+                    'book_count' => 7,
+                    'Junction' => [
+                        'id' => 30,
+                        'book_id' => 10,
+                        'genre_id' => 7
+                    ]
+                ], [
+                    'id' => 8,
+                    'name' => 'Fantasy (Updated)',
+                    'book_count' => 15,
+                    'Junction' => [
+                        'id' => 28,
+                        'book_id' => 10,
+                        'genre_id' => 8
+                    ]
+                ], [
+                    'id' => 12,
+                    'name' => 'Magic',
+                    'book_count' => 0,
+                    'Junction' => [
+                        'id' => 46,
+                        'book_id' => 10,
+                        'genre_id' => 12
+                    ]
+                ], [
+                    'id' => 13,
+                    'name' => 'Wizardry',
+                    'book_count' => 0,
+                    'Junction' => [
+                        'id' => 47,
+                        'book_id' => 10,
+                        'genre_id' => 13
+                    ]
+                ]
+            ]
+        ], $results->toArray());
     }
 
 }

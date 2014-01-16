@@ -118,11 +118,11 @@ class ModelTest extends TestCase {
             $this->assertTrue(true);
         }
 
-        // Records with ID and now record should return false
+        // Records with ID and no record should return false
         $user3 = new User();
         $user3->id = 15;
 
-        $this->assertFalse($user3->delete());
+        $this->assertEquals(0, $user3->delete());
     }
 
     /**
@@ -198,7 +198,7 @@ class ModelTest extends TestCase {
         $user->lastName = 'Stark';
 
         $this->assertFalse($user->exists());
-        $this->assertEquals(6, $user->save());
+        $this->assertEquals(6, $user->save(['validate' => false]));
         $this->assertTrue($user->exists());
 
         $this->assertArraysEqual([
