@@ -147,6 +147,13 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     protected $_exists = false;
 
     /**
+     * Mapping of relation aliases to model classes.
+     *
+     * @type array
+     */
+    protected $_relations = [];
+
+    /**
      * Validator instance.
      *
      * @type \Titon\Utility\Validator
@@ -189,6 +196,8 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      * @see \Titon\Db\Table::belongsTo()
      */
     public function belongsTo($alias, $class, $foreignKey) {
+        $this->_relations[$alias] = $class;
+
         $this->belongsTo[$alias] = [
             'class' => $class,
             'foreignKey' => $foreignKey
@@ -201,6 +210,8 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      * @see \Titon\Db\Table::belongsToMany()
      */
     public function belongsToMany($alias, $class, $junction, $foreignKey, $relatedKey) {
+        $this->_relations[$alias] = $class;
+
         $this->belongsToMany[$alias] = [
             'class' => $class,
             'junction' => $junction,
@@ -307,6 +318,8 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      * @see \Titon\Db\Table::hasOne()
      */
     public function hasOne($alias, $class, $relatedKey) {
+        $this->_relations[$alias] = $class;
+
         $this->hasOne[$alias] = [
             'class' => $class,
             'relatedKey' => $relatedKey
@@ -319,6 +332,8 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      * @see \Titon\Db\Table::hasMany()
      */
     public function hasMany($alias, $class, $relatedKey) {
+        $this->_relations[$alias] = $class;
+
         $this->hasMany[$alias] = [
             'class' => $class,
             'relatedKey' => $relatedKey
