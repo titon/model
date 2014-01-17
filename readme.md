@@ -1,4 +1,4 @@
-# Model v0.1.0 [![Build Status](https://travis-ci.org/titon/model.png)](https://travis-ci.org/titon/model) #
+# Model v0.2.0 [![Build Status](https://travis-ci.org/titon/model.png)](https://travis-ci.org/titon/model) #
 
 The Titon model package provides an [active record](http://en.wikipedia.org/wiki/Active_record_pattern) style approach to database CRUD functionality.
 Further provides data validation, field protection, and table relationship support.
