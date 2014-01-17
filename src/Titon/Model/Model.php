@@ -188,27 +188,27 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     /**
      * @see \Titon\Db\Table::belongsTo()
      */
-    public function belongsTo($alias, $table, $foreignKey) {
+    public function belongsTo($alias, $class, $foreignKey) {
         $this->belongsTo[$alias] = [
-            'class' => $table,
+            'class' => $class,
             'foreignKey' => $foreignKey
         ];
 
-        return $this->getTable()->belongsTo($alias, $table, $foreignKey);
+        return $this->getTable()->belongsTo($alias, $class, $foreignKey);
     }
 
     /**
      * @see \Titon\Db\Table::belongsToMany()
      */
-    public function belongsToMany($alias, $table, $junction, $foreignKey, $relatedKey) {
+    public function belongsToMany($alias, $class, $junction, $foreignKey, $relatedKey) {
         $this->belongsToMany[$alias] = [
-            'class' => $table,
+            'class' => $class,
             'junction' => $junction,
             'foreignKey' => $foreignKey,
             'relatedKey' => $relatedKey
         ];
 
-        return $this->getTable()->belongsToMany($alias, $table, $junction, $foreignKey, $relatedKey);
+        return $this->getTable()->belongsToMany($alias, $class, $junction, $foreignKey, $relatedKey);
     }
 
     /**
@@ -306,25 +306,25 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     /**
      * @see \Titon\Db\Table::hasOne()
      */
-    public function hasOne($alias, $table, $relatedKey) {
+    public function hasOne($alias, $class, $relatedKey) {
         $this->hasOne[$alias] = [
-            'class' => $table,
+            'class' => $class,
             'relatedKey' => $relatedKey
         ];
 
-        return $this->getTable()->hasOne($alias, $table, $relatedKey);
+        return $this->getTable()->hasOne($alias, $class, $relatedKey);
     }
 
     /**
      * @see \Titon\Db\Table::hasMany()
      */
-    public function hasMany($alias, $table, $relatedKey) {
+    public function hasMany($alias, $class, $relatedKey) {
         $this->hasMany[$alias] = [
-            'class' => $table,
+            'class' => $class,
             'relatedKey' => $relatedKey
         ];
 
-        return $this->getTable()->hasMany($alias, $table, $relatedKey);
+        return $this->getTable()->hasMany($alias, $class, $relatedKey);
     }
 
     /**
@@ -665,6 +665,9 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      */
     protected function _loadBelongsTo() {
         foreach ($this->belongsTo as $alias => $relation) {
+            $conditions = isset($relation['conditions']) ? $relation['conditions'] : null;
+            unset($relation['conditions']);
+
             if (Hash::isNumeric(array_keys($relation))) {
                 list($class, $foreignKey) = $relation;
 
@@ -673,7 +676,11 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
                 $foreignKey = $relation['foreignKey'];
             }
 
-            $this->belongsTo($alias, $class, $foreignKey);
+            $relation = $this->belongsTo($alias, $class, $foreignKey);
+
+            if ($conditions) {
+                $relation->setConditions($conditions);
+            }
         }
 
         return $this;
@@ -686,6 +693,9 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      */
     protected function _loadBelongsToMany() {
         foreach ($this->belongsToMany as $alias => $relation) {
+            $conditions = isset($relation['conditions']) ? $relation['conditions'] : null;
+            unset($relation['conditions']);
+
             if (Hash::isNumeric(array_keys($relation))) {
                 list($class, $junction, $foreignKey, $relatedKey) = $relation;
 
@@ -696,7 +706,11 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
                 $relatedKey = $relation['relatedKey'];
             }
 
-            $this->belongsToMany($alias, $class, $junction, $foreignKey, $relatedKey);
+            $relation = $this->belongsToMany($alias, $class, $junction, $foreignKey, $relatedKey);
+
+            if ($conditions) {
+                $relation->setConditions($conditions);
+            }
         }
 
         return $this;
@@ -710,7 +724,8 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     protected function _loadHasOne() {
         foreach ($this->hasOne as $alias => $relation) {
             $dependent = isset($relation['dependent']) ? $relation['dependent'] : true;
-            unset($relation['dependent']);
+            $conditions = isset($relation['conditions']) ? $relation['conditions'] : null;
+            unset($relation['dependent'], $relation['conditions']);
 
             if (Hash::isNumeric(array_keys($relation))) {
                 list($class, $relatedKey) = $relation;
@@ -722,6 +737,10 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
 
             $relation = $this->hasOne($alias, $class, $relatedKey);
             $relation->setDependent($dependent);
+
+            if ($conditions) {
+                $relation->setConditions($conditions);
+            }
         }
 
         return $this;
@@ -735,7 +754,8 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     protected function _loadHasMany() {
         foreach ($this->hasMany as $alias => $relation) {
             $dependent = isset($relation['dependent']) ? $relation['dependent'] : true;
-            unset($relation['dependent']);
+            $conditions = isset($relation['conditions']) ? $relation['conditions'] : null;
+            unset($relation['dependent'], $relation['conditions']);
 
             if (Hash::isNumeric(array_keys($relation))) {
                 list($class, $relatedKey) = $relation;
@@ -747,6 +767,10 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
 
             $relation = $this->hasMany($alias, $class, $relatedKey);
             $relation->setDependent($dependent);
+
+            if ($conditions) {
+                $relation->setConditions($conditions);
+            }
         }
 
         return $this;
