@@ -12,6 +12,7 @@ use Titon\Common\Traits\Mutable;
 use Titon\Db\Behavior;
 use Titon\Db\Callback;
 use Titon\Db\Entity;
+use Titon\Db\Mapper;
 use Titon\Db\Query;
 use Titon\Db\Repository;
 use Titon\Db\Traits\RepositoryAware;
@@ -175,6 +176,13 @@ class Model extends Entity implements Callback, Listener {
      */
     public function addBehavior(Behavior $behavior) {
         return $this->getRepository()->addBehavior($behavior);
+    }
+
+    /**
+     * @see \Titon\Db\Repository::addMapper()
+     */
+    public function addMapper(Mapper $mapper) {
+        return $this->getRepository()->addMapper($mapper);
     }
 
     /**
@@ -616,6 +624,13 @@ class Model extends Entity implements Callback, Listener {
     }
 
     /**
+     * @see \Titon\Db\Repository::decrement()
+     */
+    public static function decrement($id, array $fields) {
+        return self::repository()->decrement($id, $fields);
+    }
+
+    /**
      * @see \Titon\Db\Repository::delete()
      */
     public static function deleteBy($id, $options = true) {
@@ -663,6 +678,13 @@ class Model extends Entity implements Callback, Listener {
      */
     public static function total(Closure $conditions = null) {
         return self::select()->bindCallback($conditions)->count();
+    }
+
+    /**
+     * @see \Titon\Db\Repository::increment()
+     */
+    public static function increment($id, array $fields) {
+        return self::repository()->increment($id, $fields);
     }
 
     /**
