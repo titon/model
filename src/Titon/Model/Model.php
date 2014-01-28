@@ -20,10 +20,18 @@ use Titon\Event\Listener;
 use Titon\Event\Traits\Emittable;
 use Titon\Model\Exception\MissingPrimaryKeyException;
 use Titon\Utility\Hash;
+use Titon\Utility\Inflector;
 use Titon\Utility\Validator;
 use \Closure;
 
 /**
+ * A model is a multi-functional architectural layer that provides access to a database (a repository),
+ * represents a single record of data (an entity), provides relational mapping between models,
+ * mass data assignment protection and filtering, data validation, and more,
+ * all through the popular ActiveRecord pattern.
+ *
+ * @link http://en.wikipedia.org/wiki/Active_record_pattern
+ *
  * @package Titon\Model
  * @method \Titon\Model\Model getInstance()
  */
@@ -158,7 +166,7 @@ class Model extends Entity implements Callback, Listener {
      */
     public function __construct(array $data = []) {
         $this->on('model', $this);
-        $this->add($data);
+        $this->mapData($data);
         $this->initialize();
     }
 
@@ -270,6 +278,20 @@ class Model extends Entity implements Callback, Listener {
     }
 
     /**
+     * {@inheritdoc}
+     */
+    public function get($key) {
+        $method = sprintf('get%sField', Inflector::camelCase($key));
+        $value = parent::get($key);
+
+        if (method_exists($this, $method)) {
+            return $this->{$method}($value);
+        }
+
+        return $value;
+    }
+
+    /**
      * Return the validator errors.
      *
      * @return string[]
@@ -281,7 +303,7 @@ class Model extends Entity implements Callback, Listener {
     /**
      * {@inheritdoc}
      */
-    public function getRepository() {
+    final public function getRepository() {
         if (!$this->_repository) {
             $this->setRepository(new Repository([
                 'connection' => $this->connection,
@@ -310,6 +332,16 @@ class Model extends Entity implements Callback, Listener {
     }
 
     /**
+     * Return true if a accessor method exists.
+     *
+     * @param string $field
+     * @return string
+     */
+    public function hasAccessor($field) {
+        return sprintf('get%sField', Inflector::camelCase($field));
+    }
+
+    /**
      * @see \Titon\Db\Repository::hasOne()
      */
     public function hasOne($alias, $class, $relatedKey) {
@@ -335,6 +367,16 @@ class Model extends Entity implements Callback, Listener {
         ];
 
         return $this->getRepository()->hasMany($alias, $class, $relatedKey);
+    }
+
+    /**
+     * Return true if a mutator method exists.
+     *
+     * @param string $field
+     * @return string
+     */
+    public function hasMutator($field) {
+        return sprintf('set%sField', Inflector::camelCase($field));
     }
 
     /**
@@ -495,6 +537,21 @@ class Model extends Entity implements Callback, Listener {
         }
 
         return $id;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function __set($key, $value) {
+        $method = sprintf('set%sField', Inflector::camelCase($key));
+
+        if (method_exists($this, $method)) {
+            $this->{$method}($value);
+        } else {
+            parent::set($key, $value);
+        }
+
+        return $this;
     }
 
     /**

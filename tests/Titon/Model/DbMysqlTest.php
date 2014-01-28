@@ -14,6 +14,8 @@ use Titon\Db\Entity;
 use Titon\Db\Mysql\MysqlDriver;
 use Titon\Db\Query;
 use Titon\Test\Stub\Model\Book;
+use Titon\Test\Stub\Model\BookGenre;
+use Titon\Test\Stub\Model\Genre;
 use Titon\Test\Stub\Model\Profile;
 use Titon\Test\Stub\Model\Series;
 use Titon\Test\Stub\Model\User;
@@ -255,7 +257,7 @@ class DbMysqlTest extends TestCase {
         $this->loadFixtures('Books');
 
         // Single
-        $this->assertEquals(new Entity([
+        $this->assertEquals(new Book([
             'id' => 5,
             'series_id' => 1,
             'name' => 'A Dance with Dragons',
@@ -265,21 +267,21 @@ class DbMysqlTest extends TestCase {
 
         // Multiple
         $this->assertEquals([
-            new Entity([
+            new Book([
                 'id' => 13,
                 'series_id' => 3,
                 'name' => 'The Fellowship of the Ring',
                 'isbn' => '',
                 'released' => '1954-07-24'
             ]),
-            new Entity([
+            new Book([
                 'id' => 14,
                 'series_id' => 3,
                 'name' => 'The Two Towers',
                 'isbn' => '',
                 'released' => '1954-11-11'
             ]),
-            new Entity([
+            new Book([
                 'id' => 15,
                 'series_id' => 3,
                 'name' => 'The Return of the King',
@@ -304,42 +306,42 @@ class DbMysqlTest extends TestCase {
             })
             ->fetch(['eager' => true]);
 
-        $this->assertEquals(new Entity([
+        $this->assertEquals(new Series([
             'id' => 1,
             'name' => 'A Song of Ice and Fire',
             'Books' => [
-                new Entity([
+                new Book([
                     'id' => 1,
                     'series_id' => 1,
                     'name' => 'A Game of Thrones',
                     'isbn' => '0-553-10354-7',
                     'released' => '1996-08-02',
                     'Genres' => [
-                        new Entity([
+                        new Genre([
                             'id' => 3,
                             'name' => 'Action-Adventure',
                             'book_count' => 8,
-                            'Junction' => new Entity([
+                            'Junction' => new BookGenre([
                                 'id' => 2,
                                 'book_id' => 1,
                                 'genre_id' => 3
                             ])
                         ]),
-                        new Entity([
+                        new Genre([
                             'id' => 5,
                             'name' => 'Horror',
                             'book_count' => 5,
-                            'Junction' => new Entity([
+                            'Junction' => new BookGenre([
                                 'id' => 3,
                                 'book_id' => 1,
                                 'genre_id' => 5
                             ])
                         ]),
-                        new Entity([
+                        new Genre([
                             'id' => 8,
                             'name' => 'Fantasy',
                             'book_count' => 15,
-                            'Junction' => new Entity([
+                            'Junction' => new BookGenre([
                                 'id' => 1,
                                 'book_id' => 1,
                                 'genre_id' => 8
@@ -347,38 +349,38 @@ class DbMysqlTest extends TestCase {
                         ]),
                     ]
                 ]),
-                new Entity([
+                new Book([
                     'id' => 2,
                     'series_id' => 1,
                     'name' => 'A Clash of Kings',
                     'isbn' => '0-553-10803-4',
                     'released' => '1999-02-25',
                     'Genres' => [
-                        new Entity([
+                        new Genre([
                             'id' => 3,
                             'name' => 'Action-Adventure',
                             'book_count' => 8,
-                            'Junction' => new Entity([
+                            'Junction' => new BookGenre([
                                 'id' => 5,
                                 'book_id' => 2,
                                 'genre_id' => 3
                             ])
                         ]),
-                        new Entity([
+                        new Genre([
                             'id' => 5,
                             'name' => 'Horror',
                             'book_count' => 5,
-                            'Junction' => new Entity([
+                            'Junction' => new BookGenre([
                                 'id' => 6,
                                 'book_id' => 2,
                                 'genre_id' => 5
                             ])
                         ]),
-                        new Entity([
+                        new Genre([
                             'id' => 8,
                             'name' => 'Fantasy',
                             'book_count' => 15,
-                            'Junction' => new Entity([
+                            'Junction' => new BookGenre([
                                 'id' => 4,
                                 'book_id' => 2,
                                 'genre_id' => 8
@@ -386,38 +388,38 @@ class DbMysqlTest extends TestCase {
                         ]),
                     ]
                 ]),
-                new Entity([
+                new Book([
                     'id' => 3,
                     'series_id' => 1,
                     'name' => 'A Storm of Swords',
                     'isbn' => '0-553-10663-5',
                     'released' => '2000-11-11',
                     'Genres' => [
-                        new Entity([
+                        new Genre([
                             'id' => 3,
                             'name' => 'Action-Adventure',
                             'book_count' => 8,
-                            'Junction' => new Entity([
+                            'Junction' => new BookGenre([
                                 'id' => 8,
                                 'book_id' => 3,
                                 'genre_id' => 3
                             ])
                         ]),
-                        new Entity([
+                        new Genre([
                             'id' => 5,
                             'name' => 'Horror',
                             'book_count' => 5,
-                            'Junction' => new Entity([
+                            'Junction' => new BookGenre([
                                 'id' => 9,
                                 'book_id' => 3,
                                 'genre_id' => 5
                             ])
                         ]),
-                        new Entity([
+                        new Genre([
                             'id' => 8,
                             'name' => 'Fantasy',
                             'book_count' => 15,
-                            'Junction' => new Entity([
+                            'Junction' => new BookGenre([
                                 'id' => 7,
                                 'book_id' => 3,
                                 'genre_id' => 8
@@ -425,38 +427,38 @@ class DbMysqlTest extends TestCase {
                         ]),
                     ]
                 ]),
-                new Entity([
+                new Book([
                     'id' => 4,
                     'series_id' => 1,
                     'name' => 'A Feast for Crows',
                     'isbn' => '0-553-80150-3',
                     'released' => '2005-11-02',
                     'Genres' => [
-                        new Entity([
+                        new Genre([
                             'id' => 3,
                             'name' => 'Action-Adventure',
                             'book_count' => 8,
-                            'Junction' => new Entity([
+                            'Junction' => new BookGenre([
                                 'id' => 11,
                                 'book_id' => 4,
                                 'genre_id' => 3
                             ])
                         ]),
-                        new Entity([
+                        new Genre([
                             'id' => 5,
                             'name' => 'Horror',
                             'book_count' => 5,
-                            'Junction' => new Entity([
+                            'Junction' => new BookGenre([
                                 'id' => 12,
                                 'book_id' => 4,
                                 'genre_id' => 5
                             ])
                         ]),
-                        new Entity([
+                        new Genre([
                             'id' => 8,
                             'name' => 'Fantasy',
                             'book_count' => 15,
-                            'Junction' => new Entity([
+                            'Junction' => new BookGenre([
                                 'id' => 10,
                                 'book_id' => 4,
                                 'genre_id' => 8
@@ -464,38 +466,38 @@ class DbMysqlTest extends TestCase {
                         ]),
                     ]
                 ]),
-                new Entity([
+                new Book([
                     'id' => 5,
                     'series_id' => 1,
                     'name' => 'A Dance with Dragons',
                     'isbn' => '0-553-80147-3',
                     'released' => '2011-07-19',
                     'Genres' => [
-                        new Entity([
+                        new Genre([
                             'id' => 3,
                             'name' => 'Action-Adventure',
                             'book_count' => 8,
-                            'Junction' => new Entity([
+                            'Junction' => new BookGenre([
                                 'id' => 14,
                                 'book_id' => 5,
                                 'genre_id' => 3
                             ])
                         ]),
-                        new Entity([
+                        new Genre([
                             'id' => 5,
                             'name' => 'Horror',
                             'book_count' => 5,
-                            'Junction' => new Entity([
+                            'Junction' => new BookGenre([
                                 'id' => 15,
                                 'book_id' => 5,
                                 'genre_id' => 5
                             ])
                         ]),
-                        new Entity([
+                        new Genre([
                             'id' => 8,
                             'name' => 'Fantasy',
                             'book_count' => 15,
-                            'Junction' => new Entity([
+                            'Junction' => new BookGenre([
                                 'id' => 13,
                                 'book_id' => 5,
                                 'genre_id' => 8
@@ -520,7 +522,7 @@ class DbMysqlTest extends TestCase {
 
         $this->assertEquals(1, $user->save());
 
-        $this->assertEquals(new Entity([
+        $this->assertEquals(new User([
             'id' => 1,
             'country_id' => 3,
             'username' => 'milesj',
@@ -545,7 +547,7 @@ class DbMysqlTest extends TestCase {
             'username' => 'milesj'
         ]));
 
-        $this->assertEquals(new Entity([
+        $this->assertEquals(new User([
             'id' => 1,
             'country_id' => 3,
             'username' => 'milesj',
@@ -570,11 +572,11 @@ class DbMysqlTest extends TestCase {
         }));
 
         $this->assertEquals([
-            new Entity(['id' => 1, 'country_id' => 1, 'username' => 'miles']),
-            new Entity(['id' => 2, 'country_id' => 1, 'username' => 'batman']),
-            new Entity(['id' => 3, 'country_id' => 1, 'username' => 'superman']),
-            new Entity(['id' => 4, 'country_id' => 1, 'username' => 'spiderman']),
-            new Entity(['id' => 5, 'country_id' => 1, 'username' => 'wolverine']),
+            new User(['id' => 1, 'country_id' => 1, 'username' => 'miles']),
+            new User(['id' => 2, 'country_id' => 1, 'username' => 'batman']),
+            new User(['id' => 3, 'country_id' => 1, 'username' => 'superman']),
+            new User(['id' => 4, 'country_id' => 1, 'username' => 'spiderman']),
+            new User(['id' => 5, 'country_id' => 1, 'username' => 'wolverine']),
         ], User::select('id', 'country_id', 'username')->orderBy('id', 'asc')->fetchAll());
 
         // No where clause
@@ -583,11 +585,11 @@ class DbMysqlTest extends TestCase {
         }));
 
         $this->assertEquals([
-            new Entity(['id' => 1, 'country_id' => 2, 'username' => 'miles']),
-            new Entity(['id' => 2, 'country_id' => 2, 'username' => 'batman']),
-            new Entity(['id' => 3, 'country_id' => 2, 'username' => 'superman']),
-            new Entity(['id' => 4, 'country_id' => 2, 'username' => 'spiderman']),
-            new Entity(['id' => 5, 'country_id' => 2, 'username' => 'wolverine']),
+            new User(['id' => 1, 'country_id' => 2, 'username' => 'miles']),
+            new User(['id' => 2, 'country_id' => 2, 'username' => 'batman']),
+            new User(['id' => 3, 'country_id' => 2, 'username' => 'superman']),
+            new User(['id' => 4, 'country_id' => 2, 'username' => 'spiderman']),
+            new User(['id' => 5, 'country_id' => 2, 'username' => 'wolverine']),
         ], User::select('id', 'country_id', 'username')->orderBy('id', 'asc')->fetchAll());
     }
 
@@ -862,7 +864,7 @@ class DbMysqlTest extends TestCase {
         $time = time();
 
         // Update
-        $this->assertEquals(new Entity([
+        $this->assertEquals(new Profile([
             'id' => 4,
             'user_id' => 1,
             'lastLogin' => '2012-02-15 21:22:34',
@@ -878,7 +880,7 @@ class DbMysqlTest extends TestCase {
 
         $this->assertEquals(1, $user->save());
 
-        $this->assertEquals(new Entity([
+        $this->assertEquals(new Profile([
             'id' => 4,
             'user_id' => 1,
             'lastLogin' => date('Y-m-d H:i:s', $time),
@@ -894,7 +896,7 @@ class DbMysqlTest extends TestCase {
 
         $this->assertEquals(1, $user->save());
 
-        $this->assertEquals(new Entity([
+        $this->assertEquals(new Profile([
             'id' => 6,
             'user_id' => 1,
             'lastLogin' => date('Y-m-d H:i:s', $time),
@@ -913,38 +915,38 @@ class DbMysqlTest extends TestCase {
         $results = Book::select()->where('id', 10)->with('Genres')->fetch();
         $results->Genres;
 
-        $this->assertEquals(new Entity([
+        $this->assertEquals(new Book([
             'id' => 10,
             'series_id' => 2,
             'name' => 'Harry Potter and the Order of the Phoenix',
             'isbn' => '0-7475-5100-6',
             'released' => '2003-06-21',
             'Genres' => [
-                new Entity([
+                new Genre([
                     'id' => 2,
                     'name' => 'Adventure',
                     'book_count' => 7,
-                    'Junction' => new Entity([
+                    'Junction' => new BookGenre([
                         'id' => 29,
                         'book_id' => 10,
                         'genre_id' => 2
                     ])
                 ]),
-                new Entity([
+                new Genre([
                     'id' => 7,
                     'name' => 'Mystery',
                     'book_count' => 7,
-                    'Junction' => new Entity([
+                    'Junction' => new BookGenre([
                         'id' => 30,
                         'book_id' => 10,
                         'genre_id' => 7
                     ])
                 ]),
-                new Entity([
+                new Genre([
                     'id' => 8,
                     'name' => 'Fantasy',
                     'book_count' => 15,
-                    'Junction' => new Entity([
+                    'Junction' => new BookGenre([
                         'id' => 28,
                         'book_id' => 10,
                         'genre_id' => 8

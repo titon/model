@@ -23,7 +23,7 @@ class ModelTest extends TestCase {
     /**
      * Test behaviors are passed to the table layer.
      */
-    public function testAddBehavior() {
+    public function testBehaviors() {
         $user = new User();
         $user->addBehavior(new TimestampBehavior());
 
@@ -307,6 +307,51 @@ class ModelTest extends TestCase {
             'firstName' => 'Must be alphabetical',
             'lastName' => 'Must be a number'
         ], $user->getErrors());
+    }
+
+    /**
+     * Test that magic get accessors work.
+     */
+    public function testGetAccessor() {
+        $this->loadFixtures('Users');
+
+        $user = User::find(1);
+
+        $this->assertEquals([
+            'id' => 1,
+            'country_id' => 1,
+            'username' => 'miles',
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson',
+            'password' => '1Z5895jf72yL77h',
+            'email' => 'miles@email.com',
+            'age' => 25,
+            'created' => '1988-02-26 21:22:34',
+            'modified' => null
+        ], $user->toArray());
+
+        $this->assertEquals('Miles', $user->firstName);
+        $this->assertEquals('Johnson', $user->lastName);
+
+        // Accessor defined for a custom field
+        $this->assertEquals('Miles Johnson', $user->fullName);
+    }
+
+    /**
+     * Test that magic set mutators work.
+     */
+    public function testSetMutator() {
+        $this->loadFixtures('Users');
+
+        $user = new User();
+        $user->email = 'miles@email.com';
+        $user->fullName = 'Miles Johnson';
+
+        $this->assertEquals([
+            'email' => 'miles@email.com',
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson'
+        ], $user->toArray());
     }
 
 }
