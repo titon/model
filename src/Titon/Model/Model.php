@@ -13,8 +13,8 @@ use Titon\Db\Behavior;
 use Titon\Db\Callback;
 use Titon\Db\Entity;
 use Titon\Db\Query;
-use Titon\Db\Table;
-use Titon\Db\Traits\TableAware;
+use Titon\Db\Repository;
+use Titon\Db\Traits\RepositoryAware;
 use Titon\Event\Event;
 use Titon\Event\Listener;
 use Titon\Event\Traits\Emittable;
@@ -22,16 +22,13 @@ use Titon\Model\Exception\MissingPrimaryKeyException;
 use Titon\Utility\Hash;
 use Titon\Utility\Validator;
 use \Closure;
-use \ArrayAccess;
-use \Countable;
-use \Iterator;
 
 /**
  * @package Titon\Model
  * @method \Titon\Model\Model getInstance()
  */
-class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
-    use Mutable, Instanceable, TableAware, Emittable;
+class Model extends Entity implements Callback, Listener {
+    use Emittable, Instanceable, RepositoryAware;
 
     /**
      * Mapping of many-to-one relations.
@@ -60,13 +57,6 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      * @type string[]
      */
     protected $displayField = ['title', 'name', 'id'];
-
-    /**
-     * The Entity class to wrap results in.
-     *
-     * @type string
-     */
-    protected $entity = 'Titon\Db\Entity';
 
     /**
      * Column names that can automatically be filled and passed into the data layer.
@@ -167,33 +157,20 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      * @param array $data
      */
     public function __construct(array $data = []) {
-        $table = new Table([
-            'connection' => $this->connection,
-            'table' => $this->table,
-            'prefix' => $this->prefix,
-            'primaryKey' => $this->primaryKey,
-            'displayField' => $this->displayField,
-            'entity' => $this->entity
-        ]);
-
-        $table->on('model', $this);
         $this->on('model', $this);
-
-        $this->fill($data);
-        $this->setTable($table);
-        $this->loadRelationships();
+        $this->add($data);
         $this->initialize();
     }
 
     /**
-     * @see \Titon\Db\Table::addBehavior()
+     * @see \Titon\Db\Repository::addBehavior()
      */
     public function addBehavior(Behavior $behavior) {
-        return $this->getTable()->addBehavior($behavior);
+        return $this->getRepository()->addBehavior($behavior);
     }
 
     /**
-     * @see \Titon\Db\Table::belongsTo()
+     * @see \Titon\Db\Repository::belongsTo()
      */
     public function belongsTo($alias, $class, $foreignKey) {
         $this->_relations[$alias] = $class;
@@ -203,11 +180,11 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
             'foreignKey' => $foreignKey
         ];
 
-        return $this->getTable()->belongsTo($alias, $class, $foreignKey);
+        return $this->getRepository()->belongsTo($alias, $class, $foreignKey);
     }
 
     /**
-     * @see \Titon\Db\Table::belongsToMany()
+     * @see \Titon\Db\Repository::belongsToMany()
      */
     public function belongsToMany($alias, $class, $junction, $foreignKey, $relatedKey) {
         $this->_relations[$alias] = $class;
@@ -219,13 +196,13 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
             'relatedKey' => $relatedKey
         ];
 
-        return $this->getTable()->belongsToMany($alias, $class, $junction, $foreignKey, $relatedKey);
+        return $this->getRepository()->belongsToMany($alias, $class, $junction, $foreignKey, $relatedKey);
     }
 
     /**
      * Delete the record that as currently present in the model instance.
      *
-     * @see \Titon\Db\Table::delete()
+     * @see \Titon\Db\Repository::delete()
      *
      * @param mixed $options
      * @return int
@@ -238,7 +215,7 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
             throw new MissingPrimaryKeyException(sprintf('Cannot delete %s record if no ID is present', get_class($this)));
         }
 
-        if ($count = $this->getTable()->delete($id, $options)) {
+        if ($count = $this->getRepository()->delete($id, $options)) {
             $this->remove($this->primaryKey);
             $this->_setExists(false);
 
@@ -302,6 +279,24 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     }
 
     /**
+     * {@inheritdoc}
+     */
+    public function getRepository() {
+        if (!$this->_repository) {
+            $this->setRepository(new Repository([
+                'connection' => $this->connection,
+                'table' => $this->table,
+                'prefix' => $this->prefix,
+                'primaryKey' => $this->primaryKey,
+                'displayField' => $this->displayField,
+                'entity' => get_class($this)
+            ]));
+        }
+
+        return $this->_repository;
+    }
+
+    /**
      * Return the validator instance.
      *
      * @return \Titon\Utility\Validator
@@ -315,7 +310,7 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     }
 
     /**
-     * @see \Titon\Db\Table::hasOne()
+     * @see \Titon\Db\Repository::hasOne()
      */
     public function hasOne($alias, $class, $relatedKey) {
         $this->_relations[$alias] = $class;
@@ -325,11 +320,11 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
             'relatedKey' => $relatedKey
         ];
 
-        return $this->getTable()->hasOne($alias, $class, $relatedKey);
+        return $this->getRepository()->hasOne($alias, $class, $relatedKey);
     }
 
     /**
-     * @see \Titon\Db\Table::hasMany()
+     * @see \Titon\Db\Repository::hasMany()
      */
     public function hasMany($alias, $class, $relatedKey) {
         $this->_relations[$alias] = $class;
@@ -339,7 +334,7 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
             'relatedKey' => $relatedKey
         ];
 
-        return $this->getTable()->hasMany($alias, $class, $relatedKey);
+        return $this->getRepository()->hasMany($alias, $class, $relatedKey);
     }
 
     /**
@@ -476,7 +471,7 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      * Save a record to the database table using the data that has been set to the model.
      * Will return the record ID or 0 on failure.
      *
-     * @see \Titon\Db\Table::upsert()
+     * @see \Titon\Db\Repository::upsert()
      *
      * @param array $options
      * @return int
@@ -492,7 +487,7 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
         $data = $this->toArray();
         $id = 0;
 
-        if ($data && ($id = $this->getTable()->upsert($data, null, $options))) {
+        if ($data && ($id = $this->getRepository()->upsert($data, null, $options))) {
             $this->_setExists(true);
             $this->set($this->primaryKey, $id);
         } else {
@@ -500,6 +495,19 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
         }
 
         return $id;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    final public function setRepository(Repository $repository) {
+        $repository->on('model', $this);
+
+        $this->_repository = $repository;
+
+        $this->loadRelationships();
+
+        return $this;
     }
 
     /**
@@ -512,17 +520,6 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
         $this->_validator = $validator;
 
         return $this;
-    }
-
-    /**
-     * Return the current active record as an entity.
-     *
-     * @return \Titon\Db\Entity
-     */
-    public function toEntity() {
-        $entity = $this->entity;
-
-        return new $entity($this->toArray());
     }
 
     /**
@@ -562,24 +559,24 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     }
 
     /**
-     * @see \Titon\Db\Table::delete()
+     * @see \Titon\Db\Repository::delete()
      */
     public static function deleteBy($id, $options = true) {
-        return self::table()->delete($id, $options);
+        return self::repository()->delete($id, $options);
     }
 
     /**
-     * @see \Titon\Db\Table::deleteMany()
+     * @see \Titon\Db\Repository::deleteMany()
      */
     public static function deleteMany(Closure $conditions, $options = true) {
-        return self::table()->deleteMany($conditions, $options);
+        return self::repository()->deleteMany($conditions, $options);
     }
 
     /**
      * Will attempt to find a record by ID and return a model instance with data pre-filled.
      * If no record can be found, an empty model instance will be returned.
      *
-     * @see \Titon\Db\Table::read()
+     * @see \Titon\Db\Repository::read()
      *
      * @param int $id
      * @param array $options
@@ -589,7 +586,7 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
         /** @type \Titon\Model\Model $instance */
         $instance = new static();
 
-        if ($record = self::table()->read($id, $options)) {
+        if ($record = self::repository()->read($id, $options)) {
             if ($record instanceof Entity) {
                 $record = $record->toArray();
             }
@@ -612,28 +609,28 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     }
 
     /**
-     * @see \Titon\Db\Table::create()
+     * @see \Titon\Db\Repository::create()
      */
     public static function insert(array $data, array $options = []) {
-        return self::table()->create($data, $options);
+        return self::repository()->create($data, $options);
     }
 
     /**
-     * @see \Titon\Db\Table::createMany()
+     * @see \Titon\Db\Repository::createMany()
      */
     public static function insertMany(array $data, $hasPk = false) {
-        return self::table()->createMany($data, $hasPk);
+        return self::repository()->createMany($data, $hasPk);
     }
 
     /**
-     * @see \Titon\Db\Table::query()
+     * @see \Titon\Db\Repository::query()
      */
     public static function query($type) {
-        return self::table()->query($type);
+        return self::repository()->query($type);
     }
 
     /**
-     * @see \Titon\Db\Table::select()
+     * @see \Titon\Db\Repository::select()
      *
      * @return \Titon\Db\Query
      */
@@ -644,10 +641,10 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     /**
      * Return the direct table instance.
      *
-     * @return \Titon\Db\Table
+     * @return \Titon\Db\Repository
      */
-    public static function table() {
-        return self::getInstance(get_called_class())->getTable();
+    public static function repository() {
+        return self::getInstance(get_called_class())->getRepository();
     }
 
     /**
@@ -656,21 +653,21 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
      * @return bool
      */
     public static function truncate() {
-        return self::table()->truncate();
+        return self::repository()->truncate();
     }
 
     /**
-     * @see \Titon\Db\Table::update()
+     * @see \Titon\Db\Repository::update()
      */
     public static function updateBy($id, array $data, array $options = []) {
-        return self::table()->update($id, $data, $options);
+        return self::repository()->update($id, $data, $options);
     }
 
     /**
-     * @see \Titon\Db\Table::updateMany()
+     * @see \Titon\Db\Repository::updateMany()
      */
     public static function updateMany(array $data, Closure $conditions, array $options = []) {
-        return self::table()->updateMany($data, $conditions, $options);
+        return self::repository()->updateMany($data, $conditions, $options);
     }
 
     /**
@@ -804,7 +801,3 @@ class Model implements Callback, Listener, Iterator, ArrayAccess, Countable {
     }
 
 }
-
-// Models should only have one instance
-// This allows static calls to be possible for common tasks
-Model::$singleton = true;

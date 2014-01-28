@@ -7,7 +7,7 @@
 
 namespace Titon\Model;
 
-use Titon\Db\Behavior\TimestampableBehavior;
+use Titon\Db\Behavior\TimestampBehavior;
 use Titon\Test\Stub\Model\Book;
 use Titon\Test\Stub\Model\Country;
 use Titon\Test\Stub\Model\Profile;
@@ -25,9 +25,9 @@ class ModelTest extends TestCase {
      */
     public function testAddBehavior() {
         $user = new User();
-        $user->addBehavior(new TimestampableBehavior());
+        $user->addBehavior(new TimestampBehavior());
 
-        $this->assertTrue($user->getTable()->hasBehavior('Timestampable'));
+        $this->assertTrue($user->getRepository()->hasBehavior('Timestamp'));
     }
 
     /**
@@ -36,20 +36,20 @@ class ModelTest extends TestCase {
     public function testRelations() {
         $user = new User();
 
-        $this->assertTrue($user->getTable()->hasRelation('Profile')); // has one
-        $this->assertTrue($user->getTable()->hasRelation('Country')); // belongs to
+        $this->assertTrue($user->getRepository()->hasRelation('Profile')); // has one
+        $this->assertTrue($user->getRepository()->hasRelation('Country')); // belongs to
 
         $profile = new Profile();
 
-        $this->assertTrue($profile->getTable()->hasRelation('User')); // belongs to
+        $this->assertTrue($profile->getRepository()->hasRelation('User')); // belongs to
 
         $country = new Country();
 
-        $this->assertTrue($country->getTable()->hasRelation('Users')); // has many
+        $this->assertTrue($country->getRepository()->hasRelation('Users')); // has many
 
         $book = new Book();
 
-        $this->assertTrue($book->getTable()->hasRelation('Genres')); // belongs to many
+        $this->assertTrue($book->getRepository()->hasRelation('Genres')); // belongs to many
     }
 
     /**
@@ -93,13 +93,13 @@ class ModelTest extends TestCase {
 
         $this->assertEquals(1, $user->id);
         $this->assertTrue($user->exists());
-        $this->assertTrue($user->getTable()->exists(1)); // check DB directly
+        $this->assertTrue($user->getRepository()->exists(1)); // check DB directly
 
         $user->delete();
 
         $this->assertEquals(null, $user->id);
         $this->assertFalse($user->exists());
-        $this->assertFalse($user->getTable()->exists(1)); // check DB directly
+        $this->assertFalse($user->getRepository()->exists(1)); // check DB directly
 
         try {
             $user->delete(); // should throw exception second time
