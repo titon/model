@@ -311,7 +311,7 @@ class Model extends Entity implements Callback, Listener {
     /**
      * {@inheritdoc}
      */
-    final public function getRepository() {
+    public function getRepository() {
         if (!$this->_repository) {
             $this->setRepository(new Repository([
                 'connection' => $this->connection,
@@ -565,7 +565,7 @@ class Model extends Entity implements Callback, Listener {
     /**
      * {@inheritdoc}
      */
-    final public function setRepository(Repository $repository) {
+    public function setRepository(Repository $repository) {
         $repository->on('model', $this);
 
         $this->_repository = $repository;
