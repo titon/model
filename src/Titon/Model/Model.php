@@ -166,7 +166,6 @@ class Model extends Entity implements Callback, Listener {
      * @param array $data
      */
     public function __construct(array $data = []) {
-        $this->on('model', $this);
         $this->mapData($data);
         $this->initialize();
     }
@@ -233,7 +232,7 @@ class Model extends Entity implements Callback, Listener {
 
         if ($count = $this->getRepository()->delete($id, $options)) {
             $this->remove($this->primaryKey);
-            $this->_setExists(false);
+            $this->_exists = false;
 
             return $count;
         }
@@ -538,10 +537,10 @@ class Model extends Entity implements Callback, Listener {
         $id = 0;
 
         if ($data && ($id = $this->getRepository()->upsert($data, null, $options))) {
-            $this->_setExists(true);
+            $this->_exists = true;
             $this->set($this->primaryKey, $id);
         } else {
-            $this->_setExists(false);
+            $this->_exists = false;
         }
 
         return $id;
@@ -550,7 +549,7 @@ class Model extends Entity implements Callback, Listener {
     /**
      * {@inheritdoc}
      */
-    public function __set($key, $value) {
+    public function set($key, $value) {
         $method = sprintf('set%sField', Inflector::camelCase($key));
 
         if (method_exists($this, $method)) {
@@ -599,6 +598,8 @@ class Model extends Entity implements Callback, Listener {
         if (!$this->validate) {
             return true;
         }
+
+        $this->on('model', $this);
 
         $validator = $this->getValidator();
         $validator->reset();
@@ -664,7 +665,7 @@ class Model extends Entity implements Callback, Listener {
             }
 
             $instance->add($record);
-            $instance->_setExists(true);
+            $instance->_exists = true;
         }
 
         return $instance;
@@ -863,18 +864,6 @@ class Model extends Entity implements Callback, Listener {
                 $relation->setConditions($conditions);
             }
         }
-
-        return $this;
-    }
-
-    /**
-     * Set record existence. This should only be called internally!
-     *
-     * @param bool $state
-     * @return \Titon\Model\Model
-     */
-    protected function _setExists($state) {
-        $this->_exists = (bool) $state;
 
         return $this;
     }
