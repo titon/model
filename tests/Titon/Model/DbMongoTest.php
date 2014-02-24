@@ -9,7 +9,8 @@ namespace Titon\Model;
 
 use Exception;
 use Titon\Common\Config;
-use Titon\Common\Registry;
+use Titon\Db\Database;
+use Titon\Db\EntityCollection;
 use Titon\Db\Mongo\MongoDriver;
 use Titon\Db\Query;
 use Titon\Test\Stub\Model\Book;
@@ -27,8 +28,8 @@ class DbMongoTest extends TestCase {
      * Setup the DB once, not before every test.
      */
     public static function setUpBeforeClass() {
-        Registry::factory('Titon\Db\Connection')
-            ->addDriver(new MongoDriver('default', Config::get('db')));
+        Database::registry()
+            ->addDriver('default', new MongoDriver(Config::get('db')));
 
         // Remove singletons
         User::flushInstances();
@@ -158,10 +159,10 @@ class DbMongoTest extends TestCase {
             'name' => 'A Game of Thrones',
             'isbn' => '0-553-10354-7',
             'released' => '1996-08-02'
-        ]), Book::select('series_id', 'name', 'isbn', 'released')->orderBy('_id', 'asc')->fetch());
+        ]), Book::select('series_id', 'name', 'isbn', 'released')->orderBy('_id', 'asc')->first());
 
         // Multiple
-        $this->assertEquals([
+        $this->assertEquals(new EntityCollection([
             new Book([
                 'series_id' => 3,
                 'name' => 'The Fellowship of the Ring',
@@ -180,7 +181,7 @@ class DbMongoTest extends TestCase {
                 'isbn' => '',
                 'released' => '1955-10-25'
             ]),
-        ], Book::select('series_id', 'name', 'isbn', 'released')->where('series_id', 3)->orderBy('_id', 'asc')->fetchAll());
+        ]), Book::select('series_id', 'name', 'isbn', 'released')->where('series_id', 3)->orderBy('_id', 'asc')->all());
     }
 
     /**
@@ -189,7 +190,7 @@ class DbMongoTest extends TestCase {
     public function testUpdate() {
         $this->loadFixtures('Users');
 
-        $first = User::select()->orderBy('_id', 'asc')->fetch();
+        $first = User::select()->orderBy('_id', 'asc')->first();
 
         $user = new User();
         $user->_id = $first->_id;
@@ -209,7 +210,7 @@ class DbMongoTest extends TestCase {
             'lastName' => 'Johnson',
             'age' => 25,
             'created' => '1988-02-26 21:22:34'
-        ]), User::select()->where('_id', $last_id)->fetch());
+        ]), User::select()->where('_id', $last_id)->first());
     }
 
     /**
@@ -218,7 +219,7 @@ class DbMongoTest extends TestCase {
     public function testUpdateSingle() {
         $this->loadFixtures('Users');
 
-        $first = User::select()->orderBy('_id', 'asc')->fetch();
+        $first = User::select()->orderBy('_id', 'asc')->first();
 
         $this->assertEquals(1, User::updateBy($first->_id, [
             'country_id' => 3,
@@ -235,7 +236,7 @@ class DbMongoTest extends TestCase {
             'lastName' => 'Johnson',
             'age' => 25,
             'created' => '1988-02-26 21:22:34'
-        ]), User::select()->where('_id', $first->_id)->fetch());
+        ]), User::select()->where('_id', $first->_id)->first());
     }
 
     /**
@@ -248,26 +249,26 @@ class DbMongoTest extends TestCase {
             $query->where('country_id', '!=', 1);
         }));
 
-        $this->assertEquals([
+        $this->assertEquals(new EntityCollection([
             new User(['country_id' => 1, 'username' => 'miles']),
             new User(['country_id' => 1, 'username' => 'batman']),
             new User(['country_id' => 1, 'username' => 'superman']),
             new User(['country_id' => 1, 'username' => 'spiderman']),
             new User(['country_id' => 1, 'username' => 'wolverine']),
-        ], User::select('country_id', 'username')->orderBy('_id', 'asc')->fetchAll());
+        ]), User::select('country_id', 'username')->orderBy('_id', 'asc')->all());
 
         // No where clause
         $this->assertSame(5, User::updateMany(['country_id' => 2], function(Query $query) {
             $query->where('country_id', '!=', 1000); // high number = all
         }));
 
-        $this->assertEquals([
+        $this->assertEquals(new EntityCollection([
             new User(['country_id' => 2, 'username' => 'miles']),
             new User(['country_id' => 2, 'username' => 'batman']),
             new User(['country_id' => 2, 'username' => 'superman']),
             new User(['country_id' => 2, 'username' => 'spiderman']),
             new User(['country_id' => 2, 'username' => 'wolverine']),
-        ], User::select('country_id', 'username')->orderBy('_id', 'asc')->fetchAll());
+        ]), User::select('country_id', 'username')->orderBy('_id', 'asc')->all());
     }
 
     /**
@@ -303,7 +304,7 @@ class DbMongoTest extends TestCase {
     public function testUpdateUniqueColumn() {
         $this->loadFixtures('Users');
 
-        $first = User::select()->orderBy('_id', 'asc')->fetch();
+        $first = User::select()->orderBy('_id', 'asc')->first();
 
         $user = new User();
         $user->id = $first->_id;
@@ -323,7 +324,7 @@ class DbMongoTest extends TestCase {
     public function testDelete() {
         $this->loadFixtures('Users');
 
-        $last = User::select()->orderBy('_id', 'asc')->fetch();
+        $last = User::select()->orderBy('_id', 'asc')->first();
         $user = User::find($last->_id);
 
         $this->assertTrue($user->exists());
@@ -338,8 +339,8 @@ class DbMongoTest extends TestCase {
         $this->loadFixtures('Users', 'Profiles');
 
         $this->assertSame(5, User::total());
-        $this->assertSame(3, User::deleteMany(function() {
-            $this->where('age', '>', 30);
+        $this->assertSame(3, User::deleteMany(function(Query $query) {
+            $query->where('age', '>', 30);
         }));
         $this->assertSame(2, User::total());
     }
@@ -360,8 +361,8 @@ class DbMongoTest extends TestCase {
             $this->assertTrue(true);
         }
 
-        $this->assertEquals(3, User::deleteMany(function() {
-            $this->where('age', '>', 30);
+        $this->assertEquals(3, User::deleteMany(function(Query $query) {
+            $query->where('age', '>', 30);
         }));
     }
 

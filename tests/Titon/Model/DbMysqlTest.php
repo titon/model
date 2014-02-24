@@ -9,8 +9,8 @@ namespace Titon\Model;
 
 use Exception;
 use Titon\Common\Config;
-use Titon\Common\Registry;
-use Titon\Db\Entity;
+use Titon\Db\Database;
+use Titon\Db\EntityCollection;
 use Titon\Db\Mysql\MysqlDriver;
 use Titon\Db\Query;
 use Titon\Test\Stub\Model\Book;
@@ -30,8 +30,8 @@ class DbMysqlTest extends TestCase {
      * Setup the DB once, not before every test.
      */
     public static function setUpBeforeClass() {
-        Registry::factory('Titon\Db\Connection')
-            ->addDriver(new MysqlDriver('default', Config::get('db')));
+        Database::registry()
+            ->addDriver('default', new MysqlDriver(Config::get('db')));
 
         // Remove singletons
         User::flushInstances();
@@ -159,7 +159,7 @@ class DbMysqlTest extends TestCase {
                 'lastLogin' => '2012-06-24 17:30:33',
                 'currentLogin' => ''
             ]
-        ], User::select()->where('id', 6)->with('Profile')->fetch()->toArray());
+        ], User::select()->where('id', 6)->with('Profile')->first()->toArray());
     }
 
     /**
@@ -217,9 +217,9 @@ class DbMysqlTest extends TestCase {
                     ]
                 ],
             ]
-        ], Book::select()->where('id', 16)->with('Genres', function() {
-            $this->orderBy('id', 'asc');
-        })->fetch()->toArray());
+        ], Book::select()->where('id', 16)->with('Genres', function(Query $query) {
+            $query->orderBy('id', 'asc');
+        })->first()->toArray());
     }
 
     /**
@@ -263,10 +263,10 @@ class DbMysqlTest extends TestCase {
             'name' => 'A Dance with Dragons',
             'isbn' => '0-553-80147-3',
             'released' => '2011-07-19'
-        ]), Book::select()->where('id', 5)->fetch());
+        ]), Book::select()->where('id', 5)->first());
 
         // Multiple
-        $this->assertEquals([
+        $this->assertEquals(new EntityCollection([
             new Book([
                 'id' => 13,
                 'series_id' => 3,
@@ -288,7 +288,7 @@ class DbMysqlTest extends TestCase {
                 'isbn' => '',
                 'released' => '1955-10-25'
             ]),
-        ], Book::select()->where('series_id', 3)->orderBy('id', 'asc')->fetchAll());
+        ]), Book::select()->where('series_id', 3)->orderBy('id', 'asc')->all());
     }
 
     /**
@@ -300,23 +300,23 @@ class DbMysqlTest extends TestCase {
         $actual = Series::select('id', 'name')
             ->where('id', 1)
             ->with('Books', function(Query $query) {
-                $query->orderBy('id', 'asc')->with('Genres', function() {
-                    $this->orderBy('id', 'asc');
+                $query->orderBy('id', 'asc')->with('Genres', function(Query $query2) {
+                    $query2->orderBy('id', 'asc');
                 });
             })
-            ->fetch(['eager' => true]);
+            ->first(['eager' => true]);
 
         $this->assertEquals(new Series([
             'id' => 1,
             'name' => 'A Song of Ice and Fire',
-            'Books' => [
+            'Books' => new EntityCollection([
                 new Book([
                     'id' => 1,
                     'series_id' => 1,
                     'name' => 'A Game of Thrones',
                     'isbn' => '0-553-10354-7',
                     'released' => '1996-08-02',
-                    'Genres' => [
+                    'Genres' => new EntityCollection([
                         new Genre([
                             'id' => 3,
                             'name' => 'Action-Adventure',
@@ -347,7 +347,7 @@ class DbMysqlTest extends TestCase {
                                 'genre_id' => 8
                             ])
                         ]),
-                    ]
+                    ])
                 ]),
                 new Book([
                     'id' => 2,
@@ -355,7 +355,7 @@ class DbMysqlTest extends TestCase {
                     'name' => 'A Clash of Kings',
                     'isbn' => '0-553-10803-4',
                     'released' => '1999-02-25',
-                    'Genres' => [
+                    'Genres' => new EntityCollection([
                         new Genre([
                             'id' => 3,
                             'name' => 'Action-Adventure',
@@ -386,7 +386,7 @@ class DbMysqlTest extends TestCase {
                                 'genre_id' => 8
                             ])
                         ]),
-                    ]
+                    ])
                 ]),
                 new Book([
                     'id' => 3,
@@ -394,7 +394,7 @@ class DbMysqlTest extends TestCase {
                     'name' => 'A Storm of Swords',
                     'isbn' => '0-553-10663-5',
                     'released' => '2000-11-11',
-                    'Genres' => [
+                    'Genres' => new EntityCollection([
                         new Genre([
                             'id' => 3,
                             'name' => 'Action-Adventure',
@@ -425,7 +425,7 @@ class DbMysqlTest extends TestCase {
                                 'genre_id' => 8
                             ])
                         ]),
-                    ]
+                    ])
                 ]),
                 new Book([
                     'id' => 4,
@@ -433,7 +433,7 @@ class DbMysqlTest extends TestCase {
                     'name' => 'A Feast for Crows',
                     'isbn' => '0-553-80150-3',
                     'released' => '2005-11-02',
-                    'Genres' => [
+                    'Genres' => new EntityCollection([
                         new Genre([
                             'id' => 3,
                             'name' => 'Action-Adventure',
@@ -464,7 +464,7 @@ class DbMysqlTest extends TestCase {
                                 'genre_id' => 8
                             ])
                         ]),
-                    ]
+                    ])
                 ]),
                 new Book([
                     'id' => 5,
@@ -472,7 +472,7 @@ class DbMysqlTest extends TestCase {
                     'name' => 'A Dance with Dragons',
                     'isbn' => '0-553-80147-3',
                     'released' => '2011-07-19',
-                    'Genres' => [
+                    'Genres' => new EntityCollection([
                         new Genre([
                             'id' => 3,
                             'name' => 'Action-Adventure',
@@ -503,9 +503,9 @@ class DbMysqlTest extends TestCase {
                                 'genre_id' => 8
                             ])
                         ]),
-                    ]
+                    ])
                 ]),
-            ]
+            ])
         ]), $actual);
     }
 
@@ -533,7 +533,7 @@ class DbMysqlTest extends TestCase {
             'age' => 25,
             'created' => '1988-02-26 21:22:34',
             'modified' => null
-        ]), User::select()->where('id', 1)->fetch());
+        ]), User::select()->where('id', 1)->first());
     }
 
     /**
@@ -558,7 +558,7 @@ class DbMysqlTest extends TestCase {
             'age' => 25,
             'created' => '1988-02-26 21:22:34',
             'modified' => null
-        ]), User::select()->where('id', 1)->fetch());
+        ]), User::select()->where('id', 1)->first());
     }
 
     /**
@@ -571,26 +571,26 @@ class DbMysqlTest extends TestCase {
             $query->where('country_id', '!=', 1);
         }));
 
-        $this->assertEquals([
+        $this->assertEquals(new EntityCollection([
             new User(['id' => 1, 'country_id' => 1, 'username' => 'miles']),
             new User(['id' => 2, 'country_id' => 1, 'username' => 'batman']),
             new User(['id' => 3, 'country_id' => 1, 'username' => 'superman']),
             new User(['id' => 4, 'country_id' => 1, 'username' => 'spiderman']),
             new User(['id' => 5, 'country_id' => 1, 'username' => 'wolverine']),
-        ], User::select('id', 'country_id', 'username')->orderBy('id', 'asc')->fetchAll());
+        ]), User::select('id', 'country_id', 'username')->orderBy('id', 'asc')->all());
 
         // No where clause
         $this->assertSame(5, User::updateMany(['country_id' => 2], function(Query $query) {
             $query->where('country_id', '!=', 1000); // high number = all
         }));
 
-        $this->assertEquals([
+        $this->assertEquals(new EntityCollection([
             new User(['id' => 1, 'country_id' => 2, 'username' => 'miles']),
             new User(['id' => 2, 'country_id' => 2, 'username' => 'batman']),
             new User(['id' => 3, 'country_id' => 2, 'username' => 'superman']),
             new User(['id' => 4, 'country_id' => 2, 'username' => 'spiderman']),
             new User(['id' => 5, 'country_id' => 2, 'username' => 'wolverine']),
-        ], User::select('id', 'country_id', 'username')->orderBy('id', 'asc')->fetchAll());
+        ]), User::select('id', 'country_id', 'username')->orderBy('id', 'asc')->all());
     }
 
     /**
@@ -627,7 +627,7 @@ class DbMysqlTest extends TestCase {
                 'lastLogin' => '2012-06-24 17:30:33',
                 'currentLogin' => '2013-06-06 19:11:03'
             ]
-        ], User::select()->where('id', 1)->with('Profile')->fetch()->toArray());
+        ], User::select()->where('id', 1)->with('Profile')->first()->toArray());
 
         // Should throw errors for invalid array structure
         $user = new User();
@@ -673,9 +673,9 @@ class DbMysqlTest extends TestCase {
                 'lastLogin' => '2012-06-24 17:30:33',
                 'currentLogin' => '2013-06-06 19:11:03',
             ]
-        ], User::select()->where('id', 1)->with('Profile', function() {
-            $this->orderBy('id', 'asc'); // multiple records exist now
-        })->fetch()->toArray());
+        ], User::select()->where('id', 1)->with('Profile', function(Query $query) {
+            $query->orderBy('id', 'asc'); // multiple records exist now
+        })->first()->toArray());
     }
 
     /**
@@ -743,8 +743,8 @@ class DbMysqlTest extends TestCase {
         $this->loadFixtures('Users', 'Profiles');
 
         $this->assertSame(5, User::total());
-        $this->assertSame(3, User::deleteMany(function() {
-            $this->where('age', '>', 30);
+        $this->assertSame(3, User::deleteMany(function(Query $query) {
+            $query->where('age', '>', 30);
         }));
         $this->assertSame(2, User::total());
     }
@@ -765,8 +765,8 @@ class DbMysqlTest extends TestCase {
             $this->assertTrue(true);
         }
 
-        $this->assertEquals(3, User::deleteMany(function() {
-            $this->where('age', '>', 30);
+        $this->assertEquals(3, User::deleteMany(function(Query $query) {
+            $query->where('age', '>', 30);
         }));
     }
 
@@ -861,7 +861,7 @@ class DbMysqlTest extends TestCase {
         $this->loadFixtures(['Users', 'Profiles']);
 
         $user = new User();
-        $time = time();
+        $time = date('Y-m-d H:i:s');
 
         // Update
         $this->assertEquals(new Profile([
@@ -869,7 +869,7 @@ class DbMysqlTest extends TestCase {
             'user_id' => 1,
             'lastLogin' => '2012-02-15 21:22:34',
             'currentLogin' => '2013-06-06 19:11:03'
-        ]), Profile::select()->where('id', 4)->fetch());
+        ]), Profile::select()->where('id', 4)->first());
 
         $user->id = 1;
         $user->username = 'milesj';
@@ -883,15 +883,15 @@ class DbMysqlTest extends TestCase {
         $this->assertEquals(new Profile([
             'id' => 4,
             'user_id' => 1,
-            'lastLogin' => date('Y-m-d H:i:s', $time),
+            'lastLogin' => $time,
             'currentLogin' => '2013-06-06 19:11:03'
-        ]), Profile::select()->where('id', 4)->fetch());
+        ]), Profile::select()->where('id', 4)->first());
 
         // Create
         $this->assertFalse(Profile::find(6)->exists());
 
         $user->Profile = [
-                'lastLogin' => $time
+            'lastLogin' => $time
         ];
 
         $this->assertEquals(1, $user->save());
@@ -899,9 +899,9 @@ class DbMysqlTest extends TestCase {
         $this->assertEquals(new Profile([
             'id' => 6,
             'user_id' => 1,
-            'lastLogin' => date('Y-m-d H:i:s', $time),
+            'lastLogin' => date('Y-m-d H:i:s'),
             'currentLogin' => null
-        ]), Profile::select()->where('id', 6)->fetch());
+        ]), Profile::select()->where('id', 6)->first());
     }
 
 
@@ -912,7 +912,7 @@ class DbMysqlTest extends TestCase {
         $this->loadFixtures(['Genres', 'Books', 'BookGenres']);
 
         // Trigger lazy-loaded queries
-        $results = Book::select()->where('id', 10)->with('Genres')->fetch();
+        $results = Book::select()->where('id', 10)->with('Genres')->first();
         $results->Genres;
 
         $this->assertEquals(new Book([
@@ -921,7 +921,7 @@ class DbMysqlTest extends TestCase {
             'name' => 'Harry Potter and the Order of the Phoenix',
             'isbn' => '0-7475-5100-6',
             'released' => '2003-06-21',
-            'Genres' => [
+            'Genres' => new EntityCollection([
                 new Genre([
                     'id' => 2,
                     'name' => 'Adventure',
@@ -952,7 +952,7 @@ class DbMysqlTest extends TestCase {
                         'genre_id' => 8
                     ])
                 ])
-            ]
+            ])
         ]), $results);
 
         $book = new Book();
@@ -968,9 +968,9 @@ class DbMysqlTest extends TestCase {
         $this->assertEquals(10, $book->save());
 
         // Trigger lazy-loaded queries
-        $results = Book::select()->where('id', 10)->with('Genres', function() {
-            $this->orderBy('id', 'asc');
-        })->fetch();
+        $results = Book::select()->where('id', 10)->with('Genres', function(Query $query) {
+            $query->orderBy('id', 'asc');
+        })->first();
         $results->Genres;
 
         $this->assertEquals([

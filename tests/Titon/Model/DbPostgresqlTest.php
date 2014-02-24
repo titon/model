@@ -7,7 +7,7 @@
 
 namespace Titon\Model;
 
-use Titon\Common\Registry;
+use Titon\Db\Database;
 use Titon\Db\Pgsql\PgsqlDriver;
 use Titon\Test\Stub\Model\Book;
 use Titon\Test\Stub\Model\Profile;
@@ -23,8 +23,8 @@ class DbPostgresqlTest extends DbMysqlTest {
      * Setup the DB once, not before every test.
      */
     public static function setUpBeforeClass() {
-        Registry::factory('Titon\Db\Connection')
-            ->addDriver(new PgsqlDriver('default', [
+        Database::registry()
+            ->addDriver('default', new PgsqlDriver([
                 'database' => 'titon_test',
                 'host' => '127.0.0.1',
                 'user' => 'postgres',

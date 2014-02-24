@@ -7,7 +7,7 @@
 
 namespace Titon\Model;
 
-use Titon\Common\Registry;
+use Titon\Db\Database;
 use Titon\Db\Query;
 use Titon\Db\Sqlite\SqliteDriver;
 use Titon\Test\Stub\Model\Book;
@@ -24,8 +24,8 @@ class DbSqliteTest extends DbMysqlTest {
      * Setup the DB once, not before every test.
      */
     public static function setUpBeforeClass() {
-        Registry::factory('Titon\Db\Connection')
-            ->addDriver(new SqliteDriver('default', [
+        Database::registry()
+            ->addDriver('default', new SqliteDriver([
                 'database' => 'titon_test',
                 'host' => '127.0.0.1',
                 'user' => 'root',

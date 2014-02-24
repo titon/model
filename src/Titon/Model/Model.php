@@ -11,8 +11,9 @@ use Titon\Common\Traits\Instanceable;
 use Titon\Common\Traits\Mutable;
 use Titon\Db\Behavior;
 use Titon\Db\Callback;
+use Titon\Db\Contract\Relational;
 use Titon\Db\Entity;
-use Titon\Db\Mapper;
+use Titon\Db\Finder;
 use Titon\Db\Query;
 use Titon\Db\Repository;
 use Titon\Db\Traits\RepositoryAware;
@@ -34,9 +35,8 @@ use \Closure;
  * @link http://en.wikipedia.org/wiki/Active_record_pattern
  *
  * @package Titon\Model
- * @method \Titon\Model\Model getInstance()
  */
-class Model extends Entity implements Callback, Listener {
+class Model extends Entity implements Callback, Listener, Relational {
     use Emittable, Instanceable, RepositoryAware;
 
     /**
@@ -178,10 +178,10 @@ class Model extends Entity implements Callback, Listener {
     }
 
     /**
-     * @see \Titon\Db\Repository::addMapper()
+     * @see \Titon\Db\Repository::addFinder()
      */
-    public function addMapper(Mapper $mapper) {
-        return $this->getRepository()->addMapper($mapper);
+    public function addFinder($key, Finder $finder) {
+        return $this->getRepository()->addFinder($key, $finder);
     }
 
     /**
@@ -288,7 +288,7 @@ class Model extends Entity implements Callback, Listener {
      * {@inheritdoc}
      */
     public function get($key) {
-        $method = sprintf('get%sField', Inflector::camelCase($key));
+        $method = sprintf('get%sAttribute', Inflector::camelCase($key));
         $value = parent::get($key);
 
         if (method_exists($this, $method)) {
@@ -345,7 +345,7 @@ class Model extends Entity implements Callback, Listener {
      * @return string
      */
     public function hasAccessor($field) {
-        return sprintf('get%sField', Inflector::camelCase($field));
+        return sprintf('get%sAttribute', Inflector::camelCase($field));
     }
 
     /**
@@ -383,7 +383,7 @@ class Model extends Entity implements Callback, Listener {
      * @return string
      */
     public function hasMutator($field) {
-        return sprintf('set%sField', Inflector::camelCase($field));
+        return sprintf('set%sAttribute', Inflector::camelCase($field));
     }
 
     /**
@@ -549,8 +549,8 @@ class Model extends Entity implements Callback, Listener {
     /**
      * {@inheritdoc}
      */
-    public function set($key, $value) {
-        $method = sprintf('set%sField', Inflector::camelCase($key));
+    public function set($key, $value = null) {
+        $method = sprintf('set%sAttribute', Inflector::camelCase($key));
 
         if (method_exists($this, $method)) {
             $this->{$method}($value);
