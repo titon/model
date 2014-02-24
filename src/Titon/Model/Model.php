@@ -462,10 +462,11 @@ class Model extends Entity implements Callback, Listener, Relational {
      * Returning a boolean false will cease validation.
      *
      * @param \Titon\Event\Event $event
+     * @param \Titon\Model\Model $model
      * @param \Titon\Utility\Validator $validator
      * @return bool
      */
-    public function preValidate(Event $event, Validator $validator) {
+    public function preValidate(Event $event, Model $model, Validator $validator) {
         return true;
     }
 
@@ -494,9 +495,10 @@ class Model extends Entity implements Callback, Listener, Relational {
      * Method called after validation occurs.
      *
      * @param \Titon\Event\Event $event
+     * @param \Titon\Model\Model $model
      * @param bool $passed
      */
-    public function postValidate(Event $event, $passed = true) {
+    public function postValidate(Event $event, Model $model, $passed = true) {
         return;
     }
 
@@ -606,7 +608,7 @@ class Model extends Entity implements Callback, Listener, Relational {
         $validator->addMessages($this->messages);
         $validator->setData($this->toArray());
 
-        $event = $this->emit('model.preValidate', [$validator]);
+        $event = $this->emit('model.preValidate', [$this, $validator]);
         $state = $event->getData();
 
         // Exit early if event has returned false
@@ -619,7 +621,7 @@ class Model extends Entity implements Callback, Listener, Relational {
         $this->_errors = $validator->getErrors();
         $this->_validator = null;
 
-        $this->emit('model.postValidate', [$status]);
+        $this->emit('model.postValidate', [$this, $status]);
 
         return $status;
     }
