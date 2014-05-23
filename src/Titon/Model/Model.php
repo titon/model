@@ -10,17 +10,21 @@ namespace Titon\Model;
 use Titon\Common\Traits\Instanceable;
 use Titon\Common\Traits\Mutable;
 use Titon\Db\Behavior;
-use Titon\Db\Callback;
-use Titon\Db\Contract\Relational;
 use Titon\Db\Entity;
 use Titon\Db\Finder;
 use Titon\Db\Query;
 use Titon\Db\Repository;
-use Titon\Db\Traits\RepositoryAware;
+use Titon\Db\RepositoryAware;
 use Titon\Event\Event;
 use Titon\Event\Listener;
 use Titon\Event\Traits\Emittable;
+use Titon\Model\Exception\InvalidRelationStructureException;
 use Titon\Model\Exception\MissingPrimaryKeyException;
+use Titon\Model\Exception\MissingRelationException;
+use Titon\Model\Relation\ManyToMany;
+use Titon\Model\Relation\ManyToOne;
+use Titon\Model\Relation\OneToMany;
+use Titon\Model\Relation\OneToOne;
 use Titon\Utility\Hash;
 use Titon\Utility\Inflector;
 use Titon\Utility\Validator;
@@ -33,10 +37,11 @@ use \Closure;
  * all through the popular ActiveRecord pattern.
  *
  * @link http://en.wikipedia.org/wiki/Active_record_pattern
+ * @link http://en.wikipedia.org/wiki/Relational_model
  *
  * @package Titon\Model
  */
-class Model extends Entity implements Callback, Listener, Relational {
+class Model extends Entity implements Listener {
     use Emittable, Instanceable, RepositoryAware;
 
     /**
@@ -146,9 +151,9 @@ class Model extends Entity implements Callback, Listener, Relational {
     protected $_exists = false;
 
     /**
-     * Mapping of relation aliases to model classes.
+     * Model to model relationships, the "ORM".
      *
-     * @type array
+     * @type \Titon\Model\Relation[]
      */
     protected $_relations = [];
 
@@ -166,14 +171,20 @@ class Model extends Entity implements Callback, Listener, Relational {
      * @param array $data
      */
     public function __construct(array $data = []) {
-        $this->mapData($data);
+        $this->on('model', $this);
+        $this->loadRelationships();
         $this->initialize();
+        $this->mapData($data);
     }
 
     /**
      * @see \Titon\Db\Repository::addBehavior()
      */
     public function addBehavior(Behavior $behavior) {
+        if (method_exists($behavior, 'setModel')) {
+            $behavior->setModel($this);
+        }
+
         return $this->getRepository()->addBehavior($behavior);
     }
 
@@ -185,45 +196,73 @@ class Model extends Entity implements Callback, Listener, Relational {
     }
 
     /**
-     * @see \Titon\Db\Repository::belongsTo()
+     * Add a relation between two models.
+     *
+     * @param \Titon\Model\Relation $relation
+     * @return $this
      */
-    public function belongsTo($alias, $class, $foreignKey) {
-        $this->_relations[$alias] = $class;
+    public function addRelation(Relation $relation) {
+        $relation->setModel($this);
 
-        $this->belongsTo[$alias] = [
-            'class' => $class,
-            'foreignKey' => $foreignKey
-        ];
+        $this->_relations[$relation->getAlias()] = $relation;
 
-        return $this->getRepository()->belongsTo($alias, $class, $foreignKey);
+        return $this;
     }
 
     /**
-     * @see \Titon\Db\Repository::belongsToMany()
+     * Add a many-to-one relationship.
+     *
+     * @param string $alias
+     * @param string $class
+     * @param string $foreignKey
+     * @param \Closure $conditions
+     * @return $this
      */
-    public function belongsToMany($alias, $class, $junction, $foreignKey, $relatedKey) {
-        $this->_relations[$alias] = $class;
+    public function belongsTo($alias, $class, $foreignKey, Closure $conditions = null) {
+        $relation = (new ManyToOne($alias, $class))
+            ->setForeignKey($foreignKey);
 
-        $this->belongsToMany[$alias] = [
-            'class' => $class,
-            'junction' => $junction,
-            'foreignKey' => $foreignKey,
-            'relatedKey' => $relatedKey
-        ];
+        if ($conditions) {
+            $relation->setConditions($conditions);
+        }
 
-        return $this->getRepository()->belongsToMany($alias, $class, $junction, $foreignKey, $relatedKey);
+        return $this->addRelation($relation);
     }
 
     /**
-     * Delete the record that as currently present in the model instance.
+     * Add a many-to-many relationship.
+     *
+     * @param string $alias
+     * @param string $class
+     * @param string $junction
+     * @param string $foreignKey
+     * @param string $relatedKey
+     * @param \Closure $conditions
+     * @return $this
+     */
+    public function belongsToMany($alias, $class, $junction, $foreignKey, $relatedKey, Closure $conditions = null) {
+        $relation = (new ManyToMany($alias, $class))
+            ->setJunction($junction)
+            ->setForeignKey($foreignKey)
+            ->setRelatedForeignKey($relatedKey);
+
+        if ($conditions) {
+            $relation->setConditions($conditions);
+        }
+
+        return $this->addRelation($relation);
+    }
+
+    /**
+     * Delete the record that is currently present in the model instance.
      *
      * @see \Titon\Db\Repository::delete()
      *
-     * @param mixed $options
+     * @param array $options
      * @return int
      * @throws \Titon\Model\Exception\MissingPrimaryKeyException
      */
-    public function delete($options = true) {
+    public function delete(array $options = []) {
         $id = $this->get($this->primaryKey);
 
         if (!$id) {
@@ -231,7 +270,7 @@ class Model extends Entity implements Callback, Listener, Relational {
         }
 
         if ($count = $this->getRepository()->delete($id, $options)) {
-            $this->remove($this->primaryKey);
+            $this->_data = [];
             $this->_exists = false;
 
             return $count;
@@ -239,6 +278,88 @@ class Model extends Entity implements Callback, Listener, Relational {
 
         return 0;
     }
+
+    /**
+     * Loop through all table relations and delete dependent records using the ID as a base.
+     * Will return a count of how many dependent records were deleted.
+     *
+     * @param int|int[] $id
+     * @param bool $cascade Will delete related records if true
+     * @return int The count of records deleted
+     * @throws \Titon\Db\Exception\QueryFailureException
+     * @throws \Exception
+     */
+    /*public function deleteDependents($id, $cascade = true) {
+        $count = 0;
+        $driver = $this->getDriver();
+
+        if (!$driver->startTransaction()) {
+            throw new QueryFailureException('Failed to start database transaction');
+        }
+
+        try {
+            foreach ($this->getRelations() as $relation) {
+                if (!$relation->isDependent()) {
+                    continue;
+                }
+
+                switch ($relation->getType()) {
+                    case Relation::ONE_TO_ONE:
+                    case Relation::ONE_TO_MANY:
+                        $relatedRepo = $relation->getRelatedRepository();
+                        $results = [];
+
+                        // Fetch IDs before deletion
+                        // Only delete if relations exist
+                        if ($cascade && $relatedRepo->hasRelations()) {
+                            $results = $relatedRepo
+                                ->select($relatedRepo->getPrimaryKey())
+                                ->where($relation->getRelatedForeignKey(), $id)
+                                ->all();
+                        }
+
+                        // Delete all records at once
+                        $count += $relatedRepo
+                            ->query(Query::DELETE)
+                            ->where($relation->getRelatedForeignKey(), $id)
+                            ->save();
+
+                        // Loop through the records and cascade delete dependents
+                        if ($results) {
+                            $dependentIDs = [];
+
+                            foreach ($results as $result) {
+                                $dependentIDs[] = $result->get($relatedRepo->getPrimaryKey());
+                            }
+
+                            $count += $relatedRepo->deleteDependents($dependentIDs, $cascade);
+                        }
+                    break;
+
+                    case Relation::MANY_TO_MANY:
+                        $junctionRepo = $relation->getJunctionRepository();
+
+                        // Only delete the junction records
+                        // The related records should stay
+                        $count += $junctionRepo
+                            ->query(Query::DELETE)
+                            ->where($relation->getForeignKey(), $id)
+                            ->save();
+                    break;
+                }
+            }
+
+            $driver->commitTransaction();
+
+        // Rollback and re-throw exception
+        } catch (Exception $e) {
+            $driver->rollbackTransaction();
+
+            throw $e;
+        }
+
+        return $count;
+    }*/
 
     /**
      * Return a boolean on whether the current record exists.
@@ -285,13 +406,151 @@ class Model extends Entity implements Callback, Listener, Relational {
     }
 
     /**
+     * Once the primary query has been executed and the results have been fetched,
+     * loop over all sub-queries and fetch related data.
+     *
+     * The related data will be added to the array indexed by the relation alias.
+     *
+     * @uses Titon\Utility\Hash
+     *
+     * @param \Titon\Db\Query $query
+     * @param Entity $result
+     * @param array $options
+     * @return \Titon\Db\Entity
+     */
+    /*public function fetchRelations(Query $query, Entity $result, array $options = []) {
+        $queries = $query->getRelationQueries();
+
+        if (!$queries) {
+            return $result;
+        }
+
+        foreach ($queries as $alias => $subQuery) {
+            $newQuery = clone $subQuery;
+            $relation = $this->getRelation($alias);
+            $relatedRepo = $relation->getRelatedRepository();
+            $relatedClass = get_class($relatedRepo);
+
+            switch ($relation->getType()) {
+
+                // Has One
+                // The related table should be pointing to this table
+                // So use this ID in the related foreign key
+                // Since we only want one record, limit it and single fetch
+                case Relation::ONE_TO_ONE:
+                    $foreignValue = $result[$this->getPrimaryKey()];
+
+                    $newQuery
+                        ->where($relation->getRelatedForeignKey(), $foreignValue)
+                        ->cache([$relatedClass, 'fetchOneToOne', $foreignValue])
+                        ->limit(1);
+
+                    $result->set($alias, function() use ($newQuery, $options) {
+                        return $newQuery->first($options);
+                    });
+                break;
+
+                // Has Many
+                // The related tables should be pointing to this table
+                // So use this ID in the related foreign key
+                // Since we want multiple records, fetch all with no limit
+                case Relation::ONE_TO_MANY:
+                    $foreignValue = $result[$this->getPrimaryKey()];
+
+                    $newQuery
+                        ->where($relation->getRelatedForeignKey(), $foreignValue)
+                        ->cache([$relatedClass, 'fetchOneToMany', $foreignValue]);
+
+                    $result->set($alias, function() use ($newQuery, $options) {
+                        return $newQuery->all($options);
+                    });
+                break;
+
+                // Belongs To
+                // This table should be pointing to the related table
+                // So use the foreign key as the related ID
+                // We should only be fetching a single record
+                case Relation::MANY_TO_ONE:
+                    $foreignValue = $result[$relation->getForeignKey()];
+
+                    $newQuery
+                        ->where($relatedRepo->getPrimaryKey(), $foreignValue)
+                        ->cache([$relatedClass, 'fetchManyToOne', $foreignValue])
+                        ->limit(1);
+
+                    $result->set($alias, function() use ($newQuery, $options) {
+                        return $newQuery->first($options);
+                    });
+                break;
+
+                // Has And Belongs To Many
+                // This table points to a related table through a junction table
+                // Query the junction table for lookup IDs pointing to the related data
+                case Relation::MANY_TO_MANY:
+                    $foreignValue = $result[$this->getPrimaryKey()];
+
+                    if (!$foreignValue) {
+                        continue;
+                    }
+
+                    $result->set($alias, function() use ($relation, $newQuery, $foreignValue, $options) {
+                        $relatedRepo = $relation->getRelatedRepository();
+                        $relatedClass = get_class($relatedRepo);
+                        $lookupIDs = [];
+
+                        // Fetch the related records using the junction IDs
+                        $junctionRepo = $relation->getJunctionRepository();
+                        $junctionResults = $junctionRepo
+                            ->select()
+                            ->where($relation->getForeignKey(), $foreignValue)
+                            ->cache([get_class($junctionRepo), 'fetchManyToMany', $foreignValue])
+                            ->all();
+
+                        if (!$junctionResults) {
+                            return [];
+                        }
+
+                        foreach ($junctionResults as $result) {
+                            $lookupIDs[] = $result->get($relation->getRelatedForeignKey());
+                        }
+
+                        $m2mResults = $newQuery
+                            ->where($relatedRepo->getPrimaryKey(), $lookupIDs)
+                            ->cache([$relatedClass, 'fetchManyToMany', $lookupIDs])
+                            ->all($options);
+
+                        // Include the junction data
+                        foreach ($m2mResults as $i => $m2mResult) {
+                            foreach ($junctionResults as $junctionResult) {
+                                if ($junctionResult[$relation->getRelatedForeignKey()] == $m2mResult[$relatedRepo->getPrimaryKey()]) {
+                                    $m2mResults[$i]->set('Junction', $junctionResult);
+                                }
+                            }
+                        }
+
+                        return $m2mResults;
+                    });
+                break;
+            }
+
+            // Trigger query immediately
+            if (!empty($options['eager'])) {
+                $result->get($alias);
+            }
+
+            unset($newQuery);
+        }
+
+        return $result;
+    }*/
+
+    /**
      * {@inheritdoc}
      */
     public function get($key) {
-        $method = sprintf('get%sAttribute', Inflector::camelCase($key));
         $value = parent::get($key);
 
-        if (method_exists($this, $method)) {
+        if ($method = $this->hasAccessor($key)) {
             return $this->{$method}($value);
         }
 
@@ -299,7 +558,7 @@ class Model extends Entity implements Callback, Listener, Relational {
     }
 
     /**
-     * Return the validator errors.
+     * Return the validator errors indexed by attribute.
      *
      * @return string[]
      */
@@ -311,18 +570,57 @@ class Model extends Entity implements Callback, Listener, Relational {
      * {@inheritdoc}
      */
     public function getRepository() {
-        if (!$this->_repository) {
-            $this->setRepository(new Repository([
-                'connection' => $this->connection,
-                'table' => $this->table,
-                'prefix' => $this->prefix,
-                'primaryKey' => $this->primaryKey,
-                'displayField' => $this->displayField,
-                'entity' => get_class($this)
-            ]));
+        if ($repo = $this->_repository) {
+            return $repo;
         }
 
+        $this->setRepository(new Repository([
+            'connection' => $this->connection,
+            'table' => $this->table,
+            'prefix' => $this->prefix,
+            'primaryKey' => $this->primaryKey,
+            'displayField' => $this->displayField,
+            'entity' => get_class($this)
+        ]));
+
         return $this->_repository;
+    }
+
+    /**
+     * Return a relation by alias.
+     *
+     * @param string $alias
+     * @return \Titon\Model\Relation
+     * @throws \Titon\Model\Exception\MissingRelationException
+     */
+    public function getRelation($alias) {
+        if ($this->hasRelation($alias)) {
+            return $this->_relations[$alias];
+        }
+
+        throw new MissingRelationException(sprintf('Repository relation %s does not exist', $alias));
+    }
+
+    /**
+     * Return all relations, or all relations by type.
+     *
+     * @param int $type
+     * @return \Titon\Model\Relation[]
+     */
+    public function getRelations($type = 0) {
+        if (!$type) {
+            return $this->_relations;
+        }
+
+        $relations = [];
+
+        foreach ($this->_relations as $relation) {
+            if ($relation->getType() === $type) {
+                $relations[$relation->getAlias()] = $relation;
+            }
+        }
+
+        return $relations;
     }
 
     /**
@@ -339,51 +637,100 @@ class Model extends Entity implements Callback, Listener, Relational {
     }
 
     /**
-     * Return true if a accessor method exists.
+     * Check to see if an accessor method exists on the current model.
+     * If so, return the method name, else return null.
      *
      * @param string $field
      * @return string
      */
     public function hasAccessor($field) {
-        return sprintf('get%sAttribute', Inflector::camelCase($field));
+        $method = sprintf('get%sAttribute', Inflector::camelCase($field));
+
+        if (method_exists($this, $method)) {
+            return $method;
+        }
+
+        return null;
     }
 
     /**
-     * @see \Titon\Db\Repository::hasOne()
-     */
-    public function hasOne($alias, $class, $relatedKey) {
-        $this->_relations[$alias] = $class;
-
-        $this->hasOne[$alias] = [
-            'class' => $class,
-            'relatedKey' => $relatedKey
-        ];
-
-        return $this->getRepository()->hasOne($alias, $class, $relatedKey);
-    }
-
-    /**
-     * @see \Titon\Db\Repository::hasMany()
-     */
-    public function hasMany($alias, $class, $relatedKey) {
-        $this->_relations[$alias] = $class;
-
-        $this->hasMany[$alias] = [
-            'class' => $class,
-            'relatedKey' => $relatedKey
-        ];
-
-        return $this->getRepository()->hasMany($alias, $class, $relatedKey);
-    }
-
-    /**
-     * Return true if a mutator method exists.
+     * Check to see if a mutator method exists on the current model.
+     * If so, return the method name, else return null.
      *
      * @param string $field
      * @return string
      */
     public function hasMutator($field) {
-        return sprintf('set%sAttribute', Inflector::camelCase($field));
+        $method = sprintf('set%sAttribute', Inflector::camelCase($field));
+
+        if (method_exists($this, $method)) {
+            return $method;
+        }
+
+        return null;
+    }
+
+    /**
+     * Add a one-to-one relationship.
+     *
+     * @param string $alias
+     * @param string $class
+     * @param string $relatedKey
+     * @param bool $dependent
+     * @param \Closure $conditions
+     * @return $this
+     */
+    public function hasOne($alias, $class, $relatedKey, $dependent = true, Closure $conditions = null) {
+        $relation = (new OneToOne($alias, $class))
+            ->setRelatedForeignKey($relatedKey)
+            ->setDependent($dependent);
+
+        if ($conditions) {
+            $relation->setConditions($conditions);
+        }
+
+        return $this->addRelation($relation);
+    }
+
+    /**
+     * Add a one-to-many relationship.
+     *
+     * @param string $alias
+     * @param string $class
+     * @param string $relatedKey
+     * @param bool $dependent
+     * @param \Closure $conditions
+     * @return $this
+     */
+    public function hasMany($alias, $class, $relatedKey, $dependent = true, Closure $conditions = null) {
+        $relation = (new OneToMany($alias, $class))
+            ->setRelatedForeignKey($relatedKey)
+            ->setDependent($dependent);
+
+        if ($conditions) {
+            $relation->setConditions($conditions);
+        }
+
+        return $this->addRelation($relation);
+    }
+
+    /**
+     * Check if the relation exists.
+     *
+     * @param string $alias
+     * @return bool
+     */
+    public function hasRelation($alias) {
+        return isset($this->_relations[$alias]);
+    }
+
+    /**
+     * Check if any relation has been set.
+     *
+     * @return bool
+     */
+    public function hasRelations() {
+        return (count($this->_relations) > 0);
     }
 
     /**
@@ -439,7 +786,7 @@ class Model extends Entity implements Callback, Listener, Relational {
     /**
      * {@inheritdoc}
      */
-    public function preDelete(Event $event, $id, &$cascade) {
+    public function preDelete(Event $event, $id) {
         return true;
     }
 
@@ -453,7 +800,7 @@ class Model extends Entity implements Callback, Listener, Relational {
     /**
      * {@inheritdoc}
      */
-    public function preSave(Event $event, $id, array &$data) {
+    public function preSave(Event $event, $id, array &$data, $type) {
         return true;
     }
 
@@ -487,7 +834,7 @@ class Model extends Entity implements Callback, Listener, Relational {
     /**
      * {@inheritdoc}
      */
-    public function postSave(Event $event, $id, $created = false) {
+    public function postSave(Event $event, $id, $type) {
         return;
     }
 
@@ -552,9 +899,7 @@ class Model extends Entity implements Callback, Listener, Relational {
      * {@inheritdoc}
      */
     public function set($key, $value = null) {
-        $method = sprintf('set%sAttribute', Inflector::camelCase($key));
-
-        if (method_exists($this, $method)) {
+        if ($method = $this->hasMutator($key)) {
             $this->{$method}($value);
         } else {
             parent::set($key, $value);
@@ -570,8 +915,6 @@ class Model extends Entity implements Callback, Listener, Relational {
         $repository->on('model', $this);
 
         $this->_repository = $repository;
-
-        $this->loadRelationships();
 
         return $this;
     }
@@ -589,6 +932,148 @@ class Model extends Entity implements Callback, Listener, Relational {
     }
 
     /**
+     * Either update or insert related data for the primary repository's ID.
+     * Each relation will handle upserting differently.
+     *
+     * @param int $id
+     * @param array $data
+     * @param array $options
+     * @return int
+     * @throws \Titon\Db\Exception\QueryFailureException
+     * @throws \Exception
+     */
+    /*public function upsertRelations($id, array $data, array $options = []) {
+        $upserted = 0;
+        $driver = $this->getDriver();
+
+        if (!$data) {
+            return $upserted;
+        }
+
+        if (!$driver->startTransaction()) {
+            throw new QueryFailureException('Failed to start database transaction');
+        }
+
+        try {
+            foreach ($data as $alias => $relatedData) {
+                if (empty($data[$alias])) {
+                    continue;
+                }
+
+                $relation = $this->getRelation($alias);
+                $relatedRepo = $relation->getRelatedRepository();
+                $fk = $relation->getForeignKey();
+                $rfk = $relation->getRelatedForeignKey();
+                $rpk = $relatedRepo->getPrimaryKey();
+
+                switch ($relation->getType()) {
+                    // Append the foreign key with the current ID
+                    case Relation::ONE_TO_ONE:
+                        $relatedData[$rfk] = $id;
+                        $relatedData[$rpk] = $relatedRepo->upsert($relatedData, null, $options);
+
+                        if (!$relatedData[$rpk]) {
+                            throw new QueryFailureException(sprintf('Failed to upsert %s relational data', $alias));
+                        }
+
+                        $relatedData = $relatedRepo->data;
+
+                        $upserted++;
+                    break;
+
+                    // Loop through and append the foreign key with the current ID
+                    case Relation::ONE_TO_MANY:
+                        foreach ($relatedData as $i => $hasManyData) {
+                            $hasManyData[$rfk] = $id;
+                            $hasManyData[$rpk] = $relatedRepo->upsert($hasManyData, null, $options);
+
+                            if (!$hasManyData[$rpk]) {
+                                throw new QueryFailureException(sprintf('Failed to upsert %s relational data', $alias));
+                            }
+
+                            $hasManyData = $relatedRepo->data;
+                            $relatedData[$i] = $hasManyData;
+
+                            $upserted++;
+                        }
+                    break;
+
+                    // Loop through each set of data and upsert to gather an ID
+                    // Use that foreign ID with the current ID and save in the junction table
+                    case Relation::MANY_TO_MANY:
+                        $junctionRepo = $relation->getJunctionRepository();
+                        $jpk = $junctionRepo->getPrimaryKey();
+
+                        foreach ($relatedData as $i => $habtmData) {
+                            $junctionData = [$fk => $id];
+
+                            // Existing record by junction foreign key
+                            if (isset($habtmData[$rfk])) {
+                                $foreign_id = $habtmData[$rfk];
+                                unset($habtmData[$rfk]);
+
+                                if ($habtmData) {
+                                    $foreign_id = $relatedRepo->upsert($habtmData, $foreign_id, $options);
+                                }
+
+                            // Existing record by relation primary key
+                            // New record
+                            } else {
+                                $foreign_id = $relatedRepo->upsert($habtmData, null, $options);
+                                $habtmData = $relatedRepo->data;
+                            }
+
+                            if (!$foreign_id) {
+                                throw new QueryFailureException(sprintf('Failed to upsert %s relational data', $alias));
+                            }
+
+                            $junctionData[$rfk] = $foreign_id;
+
+                            // Only create the record if the junction doesn't already exist
+                            $exists = $junctionRepo->select()
+                                ->where($fk, $id)
+                                ->where($rfk, $foreign_id)
+                                ->first();
+
+                            if (!$exists) {
+                                $junctionData[$jpk] = $junctionRepo->upsert($junctionData, null, $options);
+
+                                if (!$junctionData[$jpk]) {
+                                    throw new QueryFailureException(sprintf('Failed to upsert %s junction data', $alias));
+                                }
+                            } else {
+                                $junctionData = $exists->toArray();
+                            }
+
+                            $habtmData['Junction'] = $junctionData;
+                            $relatedData[$i] = $habtmData;
+
+                            $upserted++;
+                        }
+                    break;
+
+                    // Can not save belongs to relations
+                    case Relation::MANY_TO_ONE:
+                        continue;
+                    break;
+                }
+
+                $this->setData([$alias => $relatedData]);
+            }
+
+            $driver->commitTransaction();
+
+        // Rollback and re-throw exception
+        } catch (Exception $e) {
+            $driver->rollbackTransaction();
+
+            throw $e;
+        }
+
+        return $upserted;
+    }*/
+
+    /**
      * Validate the current set of data against the models validation rules.
      *
      * @return bool
@@ -600,8 +1085,6 @@ class Model extends Entity implements Callback, Listener, Relational {
         if (!$this->validate) {
             return true;
         }
-
-        $this->on('model', $this);
 
         $validator = $this->getValidator();
         $validator->reset();
@@ -630,21 +1113,21 @@ class Model extends Entity implements Callback, Listener, Relational {
      * @see \Titon\Db\Repository::decrement()
      */
     public static function decrement($id, array $fields) {
-        return self::repository()->decrement($id, $fields);
+        return static::repository()->decrement($id, $fields);
     }
 
     /**
      * @see \Titon\Db\Repository::delete()
      */
-    public static function deleteBy($id, $options = true) {
-        return self::repository()->delete($id, $options);
+    public static function deleteBy($id, array $options) {
+        return static::repository()->delete($id, $options);
     }
 
     /**
      * @see \Titon\Db\Repository::deleteMany()
      */
-    public static function deleteMany(Closure $conditions, $options = true) {
-        return self::repository()->deleteMany($conditions, $options);
+    public static function deleteMany(Closure $conditions, array $options) {
+        return static::repository()->deleteMany($conditions, $options);
     }
 
     /**
@@ -661,7 +1144,7 @@ class Model extends Entity implements Callback, Listener, Relational {
         /** @type \Titon\Model\Model $instance */
         $instance = new static();
 
-        if ($record = self::repository()->read($id, $options)) {
+        if ($record = static::repository()->read($id, $options)) {
             if ($record instanceof Entity) {
                 $record = $record->toArray();
             }
@@ -680,35 +1163,35 @@ class Model extends Entity implements Callback, Listener, Relational {
      * @return int
      */
     public static function total(Closure $conditions = null) {
-        return self::select()->bindCallback($conditions)->count();
+        return static::select()->bindCallback($conditions)->count();
     }
 
     /**
      * @see \Titon\Db\Repository::increment()
      */
     public static function increment($id, array $fields) {
-        return self::repository()->increment($id, $fields);
+        return static::repository()->increment($id, $fields);
     }
 
     /**
      * @see \Titon\Db\Repository::create()
      */
     public static function insert(array $data, array $options = []) {
-        return self::repository()->create($data, $options);
+        return static::repository()->create($data, $options);
     }
 
     /**
      * @see \Titon\Db\Repository::createMany()
      */
     public static function insertMany(array $data, $hasPk = false) {
-        return self::repository()->createMany($data, $hasPk);
+        return static::repository()->createMany($data, $hasPk);
     }
 
     /**
      * @see \Titon\Db\Repository::query()
      */
     public static function query($type) {
-        return self::repository()->query($type);
+        return static::repository()->query($type);
     }
 
     /**
@@ -717,7 +1200,7 @@ class Model extends Entity implements Callback, Listener, Relational {
      * @return \Titon\Db\Query
      */
     public static function select() {
-        return self::query(Query::SELECT)->fields(func_get_args());
+        return static::query(Query::SELECT)->fields(func_get_args());
     }
 
     /**
@@ -726,7 +1209,7 @@ class Model extends Entity implements Callback, Listener, Relational {
      * @return \Titon\Db\Repository
      */
     public static function repository() {
-        return self::getInstance(get_called_class())->getRepository();
+        return static::getInstance()->getRepository();
     }
 
     /**
@@ -735,21 +1218,21 @@ class Model extends Entity implements Callback, Listener, Relational {
      * @return bool
      */
     public static function truncate() {
-        return self::repository()->truncate();
+        return static::repository()->truncate();
     }
 
     /**
      * @see \Titon\Db\Repository::update()
      */
     public static function updateBy($id, array $data, array $options = []) {
-        return self::repository()->update($id, $data, $options);
+        return static::repository()->update($id, $data, $options);
     }
 
     /**
      * @see \Titon\Db\Repository::updateMany()
      */
     public static function updateMany(array $data, Closure $conditions, array $options = []) {
-        return self::repository()->updateMany($data, $conditions, $options);
+        return static::repository()->updateMany($data, $conditions, $options);
     }
 
     /**
@@ -770,11 +1253,7 @@ class Model extends Entity implements Callback, Listener, Relational {
                 $foreignKey = $relation['foreignKey'];
             }
 
-            $relation = $this->belongsTo($alias, $class, $foreignKey);
-
-            if ($conditions) {
-                $relation->setConditions($conditions);
-            }
+            $this->belongsTo($alias, $class, $foreignKey, $conditions);
         }
 
         return $this;
@@ -800,11 +1279,7 @@ class Model extends Entity implements Callback, Listener, Relational {
                 $relatedKey = $relation['relatedKey'];
             }
 
-            $relation = $this->belongsToMany($alias, $class, $junction, $foreignKey, $relatedKey);
-
-            if ($conditions) {
-                $relation->setConditions($conditions);
-            }
+            $this->belongsToMany($alias, $class, $junction, $foreignKey, $relatedKey, $conditions);
         }
 
         return $this;
@@ -829,12 +1304,7 @@ class Model extends Entity implements Callback, Listener, Relational {
                 $relatedKey = $relation['relatedKey'];
             }
 
-            $relation = $this->hasOne($alias, $class, $relatedKey);
-            $relation->setDependent($dependent);
-
-            if ($conditions) {
-                $relation->setConditions($conditions);
-            }
+            $this->hasOne($alias, $class, $relatedKey, $dependent, $conditions);
         }
 
         return $this;
@@ -859,15 +1329,63 @@ class Model extends Entity implements Callback, Listener, Relational {
                 $relatedKey = $relation['relatedKey'];
             }
 
-            $relation = $this->hasMany($alias, $class, $relatedKey);
-            $relation->setDependent($dependent);
-
-            if ($conditions) {
-                $relation->setConditions($conditions);
-            }
+            $this->hasMany($alias, $class, $relatedKey, $dependent,  $conditions);
         }
 
         return $this;
+    }
+
+    /**
+     * Validate that relation data is structured correctly.
+     * Will only validate the top-level dimensions.
+     *
+     * @uses Titon\Utility\Hash
+     *
+     * @param array $data
+     * @throws \Titon\Model\Exception\InvalidRelationStructureException
+     */
+    protected function _validateRelationData(array $data) {
+        foreach ($this->getRelations() as $alias => $relation) {
+            if (empty($data[$alias])) {
+                continue;
+            }
+
+            $relatedData = $data[$alias];
+            $type = $relation->getType();
+
+            switch ($type) {
+                // Only child records can be validated
+                case Relation::MANY_TO_ONE:
+                    continue;
+                break;
+
+                // Both require a numerical indexed array
+                // With each value being an array of data
+                case Relation::ONE_TO_MANY:
+                case Relation::MANY_TO_MANY:
+                    if (!Hash::isNumeric(array_keys($relatedData))) {
+                        throw new InvalidRelationStructureException(sprintf('%s related data must be structured in a numerical multi-dimension array', $alias));
+                    }
+
+                    if ($type === Relation::MANY_TO_MANY) {
+                        $isNotArray = Hash::some($relatedData, function($value) {
+                            return !is_array($value);
+                        });
+
+                        if ($isNotArray) {
+                            throw new InvalidRelationStructureException(sprintf('%s related data values must be structured arrays', $alias));
+                        }
+                    }
+                break;
+
+                // A single dimension of data
+                case Relation::ONE_TO_ONE:
+                    if (Hash::isNumeric(array_keys($relatedData))) {
+                        throw new InvalidRelationStructureException(sprintf('%s related data must be structured in a single-dimension array', $alias));
+                    }
+                break;
+            }
+        }
     }
 
 }

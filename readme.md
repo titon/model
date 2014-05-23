@@ -21,6 +21,16 @@ User::updateBy(1, ['username' => 'foobar']);
 
 A full list of database features can be found under the [DB package](https://github.com/titon/db).
 
+Alongside the DBAL is an extensible object relational mapper (ORM) that permits repositories (database tables) to
+relate records to other repository records through foreign keys. Related data can also be saved automatically while saving parent records,
+and can be pulled in automatically and easily through the query builder. The ORM is fully compatible with schemaless/NoSQL database drivers.
+
+```php
+$users->hasOne('Profile', 'App\Repository\Profile', 'profile_id');
+
+$entity = $users->select()->with('Profile')->where('id', 1)->first();
+```
+
 ### Features ###
 
 * `Model` - Active record model
@@ -38,3 +48,8 @@ A full list of database features can be found under the [DB package](https://git
 ### Requirements ###
 
 * PHP 5.4.0
+
+### Upcoming Features ###
+
+* Polymorphic relations
+* Refactored lazy/eager loading of relations

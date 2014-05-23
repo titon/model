@@ -30,4 +30,4 @@ Titon\Common\Config::set('db', $db);
 
 // Used by tables
 Titon\Db\Database::registry()
-    ->addDriver('default', new Titon\Test\Stub\DriverStub($db));
+    ->addDriver('default', new Titon\Db\Mysql\MysqlDriver($db));

@@ -1,6 +1,6 @@
 <?php
 /**
- * @copyright   2010-2013, The Titon Project
+ * @copyright   2010-2014, The Titon Project
  * @license     http://opensource.org/licenses/bsd-license.php
  * @link        http://titon.io
  */
@@ -8,10 +8,10 @@
 namespace Titon\Model\Exception;
 
 /**
- * Exception thrown for a missing primary key.
+ * Exception thrown for related data structured incorrectly.
  *
  * @package Titon\Model\Exception
  */
-class MissingPrimaryKeyException extends \UnexpectedValueException {
+class InvalidRelationStructureException extends \LogicException {
 
 }
