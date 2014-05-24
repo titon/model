@@ -65,6 +65,20 @@ class ManyToMany extends AbstractRelation {
     /**
      * {@inheritdoc}
      */
+    public function getPrimaryForeignKey() {
+        return $this->detectForeignKey('foreignKey', $this->getPrimaryClass());
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getRelatedForeignKey() {
+        return $this->detectForeignKey('relatedForeignKey', $this->getRelatedClass());
+    }
+
+    /**
+     * {@inheritdoc}
+     */
     public function getType() {
         return self::MANY_TO_MANY;
     }

@@ -11,7 +11,13 @@ class OneToManyTest extends TestCase {
     protected function setUp() {
         parent::setUp();
 
-        $this->object = new OneToMany('Alias', 'Namespace\Model');
+        // User has many posts
+        $this->object = new OneToMany('Post', 'Titon\Test\Stub\Model\Post');
+        $this->object->setPrimaryClass('Titon\Test\Stub\Model\User');
+    }
+
+    public function testGetRelatedForeignKeyAutoDetect() {
+        $this->assertEquals('user_id', $this->object->getRelatedForeignKey()); // post.user_id
     }
 
     public function testGetType() {

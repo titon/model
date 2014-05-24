@@ -20,6 +20,13 @@ class OneToOne extends AbstractRelation {
     /**
      * {@inheritdoc}
      */
+    public function getRelatedForeignKey() {
+        return $this->detectForeignKey('relatedForeignKey', $this->getPrimaryClass());;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
     public function getType() {
         return self::ONE_TO_ONE;
     }

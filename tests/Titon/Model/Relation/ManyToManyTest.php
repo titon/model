@@ -11,7 +11,17 @@ class ManyToManyTest extends TestCase {
     protected function setUp() {
         parent::setUp();
 
-        $this->object = new ManyToMany('Alias', 'Namespace\Model');
+        // Book belongs to many genre
+        $this->object = new ManyToMany('Genre', 'Titon\Test\Stub\Model\Genre');
+        $this->object->setPrimaryClass('Titon\Test\Stub\Model\Book');
+    }
+
+    public function testGetPrimaryForeignKeyAutoDetect() {
+        $this->assertEquals('book_id', $this->object->getPrimaryForeignKey()); // junction.book_id
+    }
+
+    public function testGetRelatedForeignKeyAutoDetect() {
+        $this->assertEquals('genre_id', $this->object->getRelatedForeignKey()); // junction.book_id
     }
 
     public function testGetType() {

@@ -11,7 +11,13 @@ class ManyToOneTest extends TestCase {
     protected function setUp() {
         parent::setUp();
 
-        $this->object = new ManyToOne('Alias', 'Namespace\Model');
+        // User belongs to a country
+        $this->object = new ManyToOne('Country', 'Titon\Test\Stub\Model\Country');
+        $this->object->setPrimaryClass('Titon\Test\Stub\Model\User');
+    }
+
+    public function testGetPrimaryForeignKeyAutoDetect() {
+        $this->assertEquals('country_id', $this->object->getPrimaryForeignKey()); // user.country_id
     }
 
     public function testGetType() {

@@ -29,13 +29,6 @@ interface Relation {
     public function getAlias();
 
     /**
-     * Return the relation model class name.
-     *
-     * @return string
-     */
-    public function getClass();
-
-    /**
      * Return the query conditions.
      *
      * @return \Closure
@@ -43,18 +36,32 @@ interface Relation {
     public function getConditions();
 
     /**
-     * Return the name of the foreign key.
+     * Return the primary model class name.
      *
      * @return string
      */
-    public function getForeignKey();
+    public function getPrimaryClass();
+
+    /**
+     * Return the name of the foreign key for the primary model.
+     *
+     * @return string
+     */
+    public function getPrimaryForeignKey();
 
     /**
      * Return a primary model object.
      *
      * @return \Titon\Model\Model
      */
-    public function getModel();
+    public function getPrimaryModel();
+
+    /**
+     * Return the related model class name.
+     *
+     * @return string
+     */
+    public function getRelatedClass();
 
     /**
      * Return the name of the related foreign key.
@@ -93,14 +100,6 @@ interface Relation {
     public function setAlias($alias);
 
     /**
-     * Set the related model class name.
-     *
-     * @param string $class
-     * @return $this
-     */
-    public function setClass($class);
-
-    /**
      * Set the query conditions for this relation.
      *
      * @param \Closure $callback
@@ -117,12 +116,20 @@ interface Relation {
     public function setDependent($state);
 
     /**
-     * Set the foreign key for the current table.
+     * Set the primary model class name.
+     *
+     * @param string $class
+     * @return $this
+     */
+    public function setPrimaryClass($class);
+
+    /**
+     * Set the foreign key for the primary model.
      *
      * @param string $key
      * @return $this
      */
-    public function setForeignKey($key);
+    public function setPrimaryForeignKey($key);
 
     /**
      * Set the primary model object.
@@ -130,7 +137,15 @@ interface Relation {
      * @param \Titon\Model\Model $model
      * @return $this
      */
-    public function setModel(Model $model);
+    public function setPrimaryModel(Model $model);
+
+    /**
+     * Set the related model class name.
+     *
+     * @param string $class
+     * @return $this
+     */
+    public function setRelatedClass($class);
 
     /**
      * Set the foreign key for the related table.

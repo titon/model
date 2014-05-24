@@ -10,6 +10,8 @@ namespace Titon\Model\Relation;
 use Titon\Common\Base;
 use Titon\Model\Model;
 use Titon\Model\Relation;
+use Titon\Utility\Inflector;
+use Titon\Utility\Path;
 use \Closure;
 
 /**
@@ -24,7 +26,8 @@ abstract class AbstractRelation extends Base implements Relation {
      *
      * @type array {
      *      @type string $alias             The alias name to join tables on
-     *      @type string $class             Fully qualified class name for the related model
+     *      @type string $class             Fully qualified class name for the current model
+     *      @type string $relatedClass      Fully qualified class name for the related model
      *      @type string $foreignKey        Name of the foreign key in the current model
      *      @type string $relatedForeignKey Name of the foreign key in the related model
      *      @type bool $dependent           Is the relation dependent on the parent
@@ -33,6 +36,7 @@ abstract class AbstractRelation extends Base implements Relation {
     protected $_config = [
         'alias' => '',
         'class' => '',
+        'relatedClass' => '',
         'foreignKey' => '',
         'relatedForeignKey' => '',
         'dependent' => true
@@ -70,7 +74,41 @@ abstract class AbstractRelation extends Base implements Relation {
         parent::__construct($config);
 
         $this->setAlias($alias);
-        $this->setClass($class);
+        $this->setRelatedClass($class);
+    }
+
+    /**
+     * Generate a foreign key column name by inflecting a class name.
+     *
+     * @param string $class
+     * @return string
+     */
+    public function buildForeignKey($class) {
+        if (strpos($class, '\\') !== false) {
+            $class = Path::className($class);
+        }
+
+        return Inflector::underscore($class) . '_id';
+    }
+
+    /**
+     * Return a foreign key either for the primary or related model.
+     * If no foreign key is defined, automatically inflect one and set it.
+     *
+     * @param string $config
+     * @param string $class
+     * @return string
+     */
+    public function detectForeignKey($config, $class) {
+        $foreignKey = $this->getConfig($config);
+
+        if (!$foreignKey) {
+            $foreignKey = $this->buildForeignKey($class);
+
+            $this->setConfig($config, $foreignKey);
+        }
+
+        return $foreignKey;
     }
 
     /**
@@ -83,13 +121,6 @@ abstract class AbstractRelation extends Base implements Relation {
     /**
      * {@inheritdoc}
      */
-    public function getClass() {
-        return $this->getConfig('class');
-    }
-
-    /**
-     * {@inheritdoc}
-     */
     public function getConditions() {
         return $this->_conditions;
     }
@@ -97,15 +128,29 @@ abstract class AbstractRelation extends Base implements Relation {
     /**
      * {@inheritdoc}
      */
-    public function getForeignKey() {
+    public function getPrimaryClass() {
+        return $this->getConfig('class');
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getPrimaryForeignKey() {
         return $this->getConfig('foreignKey');
     }
 
     /**
      * {@inheritdoc}
      */
-    public function getModel() {
+    public function getPrimaryModel() {
         return $this->_model;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getRelatedClass() {
+        return $this->getConfig('relatedClass');
     }
 
     /**
@@ -123,7 +168,7 @@ abstract class AbstractRelation extends Base implements Relation {
             return $model;
         }
 
-        $class = $this->getClass();
+        $class = $this->getRelatedClass();
 
         $this->setRelatedModel(new $class());
 
@@ -149,15 +194,6 @@ abstract class AbstractRelation extends Base implements Relation {
     /**
      * {@inheritdoc}
      */
-    public function setClass($class) {
-        $this->setConfig('class', (string) $class);
-
-        return $this;
-    }
-
-    /**
-     * {@inheritdoc}
-     */
     public function setConditions(Closure $callback) {
         $this->_conditions = $callback;
 
@@ -176,7 +212,16 @@ abstract class AbstractRelation extends Base implements Relation {
     /**
      * {@inheritdoc}
      */
-    public function setForeignKey($key) {
+    public function setPrimaryClass($class) {
+        $this->setConfig('class', (string) $class);
+
+        return $this;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function setPrimaryForeignKey($key) {
         $this->setConfig('foreignKey', $key);
 
         return $this;
@@ -185,8 +230,18 @@ abstract class AbstractRelation extends Base implements Relation {
     /**
      * {@inheritdoc}
      */
-    public function setModel(Model $model) {
+    public function setPrimaryModel(Model $model) {
         $this->_model = $model;
+        $this->setPrimaryClass(get_class($model));
+
+        return $this;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function setRelatedClass($class) {
+        $this->setConfig('relatedClass', (string) $class);
 
         return $this;
     }
@@ -205,6 +260,7 @@ abstract class AbstractRelation extends Base implements Relation {
      */
     public function setRelatedModel(Model $model) {
         $this->_relatedModel = $model;
+        $this->setRelatedClass(get_class($model));
 
         return $this;
     }

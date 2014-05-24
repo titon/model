@@ -75,9 +75,10 @@ class CounterBehavior extends AbstractBehavior {
             foreach ((array) $id as $value) {
                 switch ($relation->getType()) {
                     case Relation::MANY_TO_MANY:
+                        /** @type \Titon\Model\Relation\ManyToMany $relation */
                         $results = $relation->getJunctionRepository()
                             ->select()
-                            ->where($relation->getForeignKey(), $value)
+                            ->where($relation->getPrimaryForeignKey(), $value)
                             ->bindCallback($counter['scope'])
                             ->all();
 
@@ -172,7 +173,7 @@ class CounterBehavior extends AbstractBehavior {
      */
     protected function _syncManyToMany(ManyToMany $relation, $ids, array $counter) {
         $alias = $relation->getAlias();
-        $fk = $relation->getForeignKey();
+        $fk = $relation->getPrimaryForeignKey();
         $rfk = $relation->getRelatedForeignKey();
         $junctionRepo = $relation->getJunctionRepository();
         $relatedRepo = $relation->getRelatedModel()->getRepository();
@@ -231,7 +232,7 @@ class CounterBehavior extends AbstractBehavior {
     protected function _syncManyToOne(ManyToOne $relation, $ids, array $counter) {
         $repo = $this->getModel()->getRepository();
         $alias = $relation->getAlias();
-        $fk = $relation->getForeignKey();
+        $fk = $relation->getPrimaryForeignKey();
         $relatedRepo = $relation->getRelatedModel()->getRepository();
 
         foreach ((array) $ids as $id) {

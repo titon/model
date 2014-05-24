@@ -3,7 +3,7 @@ namespace Titon\Model;
 
 use Titon\Db\Query\Expr;
 use Titon\Db\Query;
-use Titon\Model\Relation\OneToMany;
+use Titon\Model\Relation\AbstractRelation;
 use Titon\Test\Stub\Model\User;
 use Titon\Test\TestCase;
 
@@ -15,7 +15,13 @@ class RelationTest extends TestCase {
     protected function setUp() {
         parent::setUp();
 
-        $this->object = new OneToMany('User', 'Titon\Test\Stub\Model\User');
+        $this->object = new RelationStub('User', 'Titon\Test\Stub\Model\User');
+    }
+
+    public function testBuildForeignKey() {
+        $this->assertEquals('user_id', $this->object->buildForeignKey('User'));
+        $this->assertEquals('user_id', $this->object->buildForeignKey('Titon\Test\Stub\Model\User'));
+        $this->assertEquals('book_genre_id', $this->object->buildForeignKey('Titon\Test\Stub\Model\BookGenre'));
     }
 
     public function testGetSetAlias() {
@@ -24,14 +30,6 @@ class RelationTest extends TestCase {
         $this->object->setAlias('Profile');
 
         $this->assertEquals('Profile', $this->object->getAlias());
-    }
-
-    public function testGetSetClass() {
-        $this->assertEquals('Titon\Test\Stub\Model\User', $this->object->getClass());
-
-        $this->object->setClass('Titon\Test\Stub\Model\Profile');
-
-        $this->assertEquals('Titon\Test\Stub\Model\Profile', $this->object->getClass());
     }
 
     public function testGetSetConditions() {
@@ -58,20 +56,36 @@ class RelationTest extends TestCase {
         $this->assertEquals([new Expr('status', '=', 1)], $query->getWhere()->getParams());
     }
 
+    public function testGetSetPrimaryClass() {
+        $this->assertEquals('', $this->object->getPrimaryClass());
+
+        $this->object->setPrimaryClass('Titon\Test\Stub\Model\Profile');
+
+        $this->assertEquals('Titon\Test\Stub\Model\Profile', $this->object->getPrimaryClass());
+    }
+
     public function testGetSetForeignKey() {
-        $this->assertEquals(null, $this->object->getForeignKey());
+        $this->assertEquals(null, $this->object->getPrimaryForeignKey());
 
-        $this->object->setForeignKey('user_id');
+        $this->object->setPrimaryForeignKey('user_id');
 
-        $this->assertEquals('user_id', $this->object->getForeignKey());
+        $this->assertEquals('user_id', $this->object->getPrimaryForeignKey());
     }
 
     public function testGetSetModel() {
-        $this->assertEquals(null, $this->object->getModel());
+        $this->assertEquals(null, $this->object->getPrimaryModel());
 
-        $this->object->setModel(new User());
+        $this->object->setPrimaryModel(new User());
 
-        $this->assertInstanceOf('Titon\Model\Model', $this->object->getModel());
+        $this->assertInstanceOf('Titon\Model\Model', $this->object->getPrimaryModel());
+    }
+
+    public function testGetSetRelatedClass() {
+        $this->assertEquals('Titon\Test\Stub\Model\User', $this->object->getRelatedClass());
+
+        $this->object->setRelatedClass('Titon\Test\Stub\Model\Profile');
+
+        $this->assertEquals('Titon\Test\Stub\Model\Profile', $this->object->getRelatedClass());
     }
 
     public function testGetSetRelatedForeignKey() {
@@ -91,4 +105,8 @@ class RelationTest extends TestCase {
         $this->assertSame($model, $this->object->getRelatedModel());
     }
 
+}
+
+class RelationStub extends AbstractRelation {
+    public function getType() { return ''; }
 }

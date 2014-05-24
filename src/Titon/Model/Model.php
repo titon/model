@@ -202,7 +202,7 @@ class Model extends Entity implements Listener {
      * @return $this
      */
     public function addRelation(Relation $relation) {
-        $relation->setModel($this);
+        $relation->setPrimaryModel($this);
 
         $this->_relations[$relation->getAlias()] = $relation;
 
@@ -218,9 +218,9 @@ class Model extends Entity implements Listener {
      * @param \Closure $conditions
      * @return $this
      */
-    public function belongsTo($alias, $class, $foreignKey, Closure $conditions = null) {
+    public function belongsTo($alias, $class, $foreignKey = null, Closure $conditions = null) {
         $relation = (new ManyToOne($alias, $class))
-            ->setForeignKey($foreignKey);
+            ->setPrimaryForeignKey($foreignKey);
 
         if ($conditions) {
             $relation->setConditions($conditions);
@@ -240,10 +240,10 @@ class Model extends Entity implements Listener {
      * @param \Closure $conditions
      * @return $this
      */
-    public function belongsToMany($alias, $class, $junction, $foreignKey, $relatedKey, Closure $conditions = null) {
+    public function belongsToMany($alias, $class, $junction, $foreignKey = null, $relatedKey = null, Closure $conditions = null) {
         $relation = (new ManyToMany($alias, $class))
             ->setJunction($junction)
-            ->setForeignKey($foreignKey)
+            ->setPrimaryForeignKey($foreignKey)
             ->setRelatedForeignKey($relatedKey);
 
         if ($conditions) {
@@ -547,8 +547,8 @@ class Model extends Entity implements Listener {
     /**
      * {@inheritdoc}
      */
-    public function get($key) {
-        $value = parent::get($key);
+    public function get($key, $default = null) {
+        $value = parent::get($key, $default);
 
         if ($method = $this->hasAccessor($key)) {
             return $this->{$method}($value);
@@ -680,7 +680,7 @@ class Model extends Entity implements Listener {
      * @param \Closure $conditions
      * @return $this
      */
-    public function hasOne($alias, $class, $relatedKey, $dependent = true, Closure $conditions = null) {
+    public function hasOne($alias, $class, $relatedKey = null, $dependent = true, Closure $conditions = null) {
         $relation = (new OneToOne($alias, $class))
             ->setRelatedForeignKey($relatedKey)
             ->setDependent($dependent);
@@ -702,7 +702,7 @@ class Model extends Entity implements Listener {
      * @param \Closure $conditions
      * @return $this
      */
-    public function hasMany($alias, $class, $relatedKey, $dependent = true, Closure $conditions = null) {
+    public function hasMany($alias, $class, $relatedKey = null, $dependent = true, Closure $conditions = null) {
         $relation = (new OneToMany($alias, $class))
             ->setRelatedForeignKey($relatedKey)
             ->setDependent($dependent);

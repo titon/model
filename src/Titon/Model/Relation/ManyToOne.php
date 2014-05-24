@@ -20,6 +20,13 @@ class ManyToOne extends AbstractRelation {
     /**
      * {@inheritdoc}
      */
+    public function getPrimaryForeignKey() {
+        return $this->detectForeignKey('foreignKey', $this->getRelatedClass());
+    }
+
+    /**
+     * {@inheritdoc}
+     */
     public function getType() {
         return self::MANY_TO_ONE;
     }
