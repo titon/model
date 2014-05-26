@@ -25,7 +25,6 @@ use Titon\Model\Relation\ManyToMany;
 use Titon\Model\Relation\ManyToOne;
 use Titon\Model\Relation\OneToMany;
 use Titon\Model\Relation\OneToOne;
-use Titon\Utility\Hash;
 use Titon\Utility\Inflector;
 use Titon\Utility\Validator;
 use \Closure;
@@ -172,7 +171,6 @@ class Model extends Entity implements Listener {
      */
     public function __construct(array $data = []) {
         $this->on('model', $this);
-        $this->loadRelationships();
         $this->initialize();
         $this->mapData($data);
     }
@@ -186,13 +184,6 @@ class Model extends Entity implements Listener {
         }
 
         return $this->getRepository()->addBehavior($behavior);
-    }
-
-    /**
-     * @see \Titon\Db\Repository::addFinder()
-     */
-    public function addFinder($key, Finder $finder) {
-        return $this->getRepository()->addFinder($key, $finder);
     }
 
     /**
@@ -604,10 +595,10 @@ class Model extends Entity implements Listener {
     /**
      * Return all relations, or all relations by type.
      *
-     * @param int $type
+     * @param string $type
      * @return \Titon\Model\Relation[]
      */
-    public function getRelations($type = 0) {
+    public function getRelations($type = null) {
         if (!$type) {
             return $this->_relations;
         }
@@ -651,6 +642,13 @@ class Model extends Entity implements Listener {
         }
 
         return null;
+    }
+
+    /**
+     * @see \Titon\Db\Repository::hasBehavior()
+     */
+    public function hasBehavior($alias) {
+        return $this->getRepository()->hasBehavior($alias);
     }
 
     /**
@@ -737,7 +735,7 @@ class Model extends Entity implements Listener {
      * Method that is called immediately after construction.
      */
     public function initialize() {
-        return;
+        $this->loadRelationships();
     }
 
     /**
@@ -775,10 +773,42 @@ class Model extends Entity implements Listener {
      * @return \Titon\Model\Model
      */
     public function loadRelationships() {
-        $this->_loadBelongsTo();
-        $this->_loadBelongsToMany();
-        $this->_loadHasOne();
-        $this->_loadHasMany();
+        foreach ([
+            Relation::MANY_TO_ONE => $this->belongsTo,
+            Relation::MANY_TO_MANY => $this->belongsToMany,
+            Relation::ONE_TO_ONE => $this->hasOne,
+            Relation::ONE_TO_MANY => $this->hasMany
+        ] as $type => $relations) {
+            foreach ($relations as $alias => $relation) {
+                if (is_string($relation)) {
+                    $relation = ['model' => $relation];
+                }
+
+                $relation = $relation + [
+                    'model' => null,
+                    'foreignKey' => null,
+                    'relatedForeignKey' => null,
+                    'conditions' => null,
+                    'dependent' => true,
+                    'junction' => null
+                ];
+
+                switch ($type) {
+                    case Relation::MANY_TO_ONE:
+                        $this->belongsTo($alias, $relation['model'], $relation['foreignKey'], $relation['conditions']);
+                    break;
+                    case Relation::MANY_TO_MANY:
+                        $this->belongsToMany($alias, $relation['model'], $relation['junction'], $relation['foreignKey'], $relation['relatedForeignKey'], $relation['conditions']);
+                    break;
+                    case Relation::ONE_TO_ONE:
+                        $this->hasOne($alias, $relation['model'], $relation['relatedForeignKey'], $relation['dependent'], $relation['conditions']);
+                    break;
+                    case Relation::ONE_TO_MANY:
+                        $this->hasMany($alias, $relation['model'], $relation['relatedForeignKey'], $relation['dependent'], $relation['conditions']);
+                    break;
+                }
+            }
+        }
 
         return $this;
     }
@@ -1092,10 +1122,9 @@ class Model extends Entity implements Listener {
         $validator->setData($this->toArray());
 
         $event = $this->emit('model.preValidate', [$this, $validator]);
-        $state = $event->getData();
 
         // Exit early if event has returned false
-        if ($state === false) {
+        if ($event->getData() === false) {
             return false;
         }
 
@@ -1119,14 +1148,14 @@ class Model extends Entity implements Listener {
     /**
      * @see \Titon\Db\Repository::delete()
      */
-    public static function deleteBy($id, array $options) {
+    public static function deleteBy($id, array $options = []) {
         return static::repository()->delete($id, $options);
     }
 
     /**
      * @see \Titon\Db\Repository::deleteMany()
      */
-    public static function deleteMany(Closure $conditions, array $options) {
+    public static function deleteMany(Closure $conditions, array $options = []) {
         return static::repository()->deleteMany($conditions, $options);
     }
 
@@ -1141,29 +1170,14 @@ class Model extends Entity implements Listener {
      * @return \Titon\Model\Model
      */
     public static function find($id, array $options = []) {
-        /** @type \Titon\Model\Model $instance */
-        $instance = new static();
-
+        /** @type \Titon\Model\Model $record */
         if ($record = static::repository()->read($id, $options)) {
-            if ($record instanceof Entity) {
-                $record = $record->toArray();
-            }
+            $record->_exists = true;
 
-            $instance->add($record);
-            $instance->_exists = true;
+            return $record;
         }
 
-        return $instance;
-    }
-
-    /**
-     * Return a count of records in the table.
-     *
-     * @param \Closure $conditions
-     * @return int
-     */
-    public static function total(Closure $conditions = null) {
-        return static::select()->bindCallback($conditions)->count();
+        return new static();
     }
 
     /**
@@ -1195,6 +1209,15 @@ class Model extends Entity implements Listener {
     }
 
     /**
+     * Return the direct table instance.
+     *
+     * @return \Titon\Db\Repository
+     */
+    public static function repository() {
+        return static::getInstance()->getRepository();
+    }
+
+    /**
      * @see \Titon\Db\Repository::select()
      *
      * @return \Titon\Db\Query
@@ -1204,12 +1227,13 @@ class Model extends Entity implements Listener {
     }
 
     /**
-     * Return the direct table instance.
+     * Return a count of records in the table.
      *
-     * @return \Titon\Db\Repository
+     * @param \Closure $conditions
+     * @return int
      */
-    public static function repository() {
-        return static::getInstance()->getRepository();
+    public static function total(Closure $conditions = null) {
+        return static::select()->bindCallback($conditions)->count();
     }
 
     /**
@@ -1236,106 +1260,6 @@ class Model extends Entity implements Listener {
     }
 
     /**
-     * Load many-to-one relations.
-     *
-     * @return \Titon\Model\Model
-     */
-    protected function _loadBelongsTo() {
-        foreach ($this->belongsTo as $alias => $relation) {
-            $conditions = isset($relation['conditions']) ? $relation['conditions'] : null;
-            unset($relation['conditions']);
-
-            if (Hash::isNumeric(array_keys($relation))) {
-                list($class, $foreignKey) = $relation;
-
-            } else {
-                $class = $relation['class'];
-                $foreignKey = $relation['foreignKey'];
-            }
-
-            $this->belongsTo($alias, $class, $foreignKey, $conditions);
-        }
-
-        return $this;
-    }
-
-    /**
-     * Load many-to-many relations.
-     *
-     * @return \Titon\Model\Model
-     */
-    protected function _loadBelongsToMany() {
-        foreach ($this->belongsToMany as $alias => $relation) {
-            $conditions = isset($relation['conditions']) ? $relation['conditions'] : null;
-            unset($relation['conditions']);
-
-            if (Hash::isNumeric(array_keys($relation))) {
-                list($class, $junction, $foreignKey, $relatedKey) = $relation;
-
-            } else {
-                $class = $relation['class'];
-                $junction = $relation['junction'];
-                $foreignKey = $relation['foreignKey'];
-                $relatedKey = $relation['relatedKey'];
-            }
-
-            $this->belongsToMany($alias, $class, $junction, $foreignKey, $relatedKey, $conditions);
-        }
-
-        return $this;
-    }
-
-    /**
-     * Load one-to-one relations.
-     *
-     * @return \Titon\Model\Model
-     */
-    protected function _loadHasOne() {
-        foreach ($this->hasOne as $alias => $relation) {
-            $dependent = isset($relation['dependent']) ? $relation['dependent'] : true;
-            $conditions = isset($relation['conditions']) ? $relation['conditions'] : null;
-            unset($relation['dependent'], $relation['conditions']);
-
-            if (Hash::isNumeric(array_keys($relation))) {
-                list($class, $relatedKey) = $relation;
-
-            } else {
-                $class = $relation['class'];
-                $relatedKey = $relation['relatedKey'];
-            }
-
-            $this->hasOne($alias, $class, $relatedKey, $dependent, $conditions);
-        }
-
-        return $this;
-    }
-
-    /**
-     * Load one-to-many relations.
-     *
-     * @return \Titon\Model\Model
-     */
-    protected function _loadHasMany() {
-        foreach ($this->hasMany as $alias => $relation) {
-            $dependent = isset($relation['dependent']) ? $relation['dependent'] : true;
-            $conditions = isset($relation['conditions']) ? $relation['conditions'] : null;
-            unset($relation['dependent'], $relation['conditions']);
-
-            if (Hash::isNumeric(array_keys($relation))) {
-                list($class, $relatedKey) = $relation;
-
-            } else {
-                $class = $relation['class'];
-                $relatedKey = $relation['relatedKey'];
-            }
-
-            $this->hasMany($alias, $class, $relatedKey, $dependent,  $conditions);
-        }
-
-        return $this;
-    }
-
-    /**
      * Validate that relation data is structured correctly.
      * Will only validate the top-level dimensions.
      *
@@ -1343,7 +1267,7 @@ class Model extends Entity implements Listener {
      *
      * @param array $data
      * @throws \Titon\Model\Exception\InvalidRelationStructureException
-     */
+     *
     protected function _validateRelationData(array $data) {
         foreach ($this->getRelations() as $alias => $relation) {
             if (empty($data[$alias])) {
@@ -1386,6 +1310,6 @@ class Model extends Entity implements Listener {
                 break;
             }
         }
-    }
+    }*/
 
 }

@@ -16,10 +16,10 @@ use Closure;
  */
 interface Relation {
 
-    const ONE_TO_ONE = 'oneToOne'; // Has One
-    const ONE_TO_MANY = 'oneToMany'; // Has Many
-    const MANY_TO_ONE = 'manyToOne'; // Belongs To
-    const MANY_TO_MANY = 'manyToMany'; // Has And Belongs To Many
+    const ONE_TO_ONE = 'oneToOne'; // Has one
+    const ONE_TO_MANY = 'oneToMany'; // Has many
+    const MANY_TO_ONE = 'manyToOne'; // Belongs to
+    const MANY_TO_MANY = 'manyToMany'; // Has and belongs to many
 
     /**
      * Return the relation alias name.

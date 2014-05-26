@@ -1,280 +1,297 @@
 <?php
-/**
- * @copyright   2010-2013, The Titon Project
- * @license     http://opensource.org/licenses/bsd-license.php
- * @link        http://titon.io
- */
-
 namespace Titon\Model;
 
 use Titon\Db\Behavior\TimestampBehavior;
-use Titon\Test\Stub\Model\Book;
-use Titon\Test\Stub\Model\Country;
+use Titon\Model\Relation\ManyToMany;
+use Titon\Model\Relation\ManyToOne;
+use Titon\Model\Relation\OneToMany;
+use Titon\Model\Relation\OneToOne;
 use Titon\Test\Stub\Model\Profile;
 use Titon\Test\Stub\Model\User;
 use Titon\Test\TestCase;
-use \Exception;
+use Titon\Utility\Validator;
 
 /**
- * Test class for Titon\Model\Model.
+ * @property \Titon\Model\Model $object
  */
 class ModelTest extends TestCase {
 
-    /**
-     * Test behaviors are passed to the table layer.
-     */
-    public function testBehaviors() {
-        $user = new User();
-        $user->addBehavior(new TimestampBehavior());
+    protected function setUp() {
+        parent::setUp();
 
-        $this->assertTrue($user->getRepository()->hasBehavior('Timestamp'));
+        $this->object = new User();
     }
 
-    /**
-     * Test that relations are set from the property definitions.
-     */
-    public function testRelations() {
-        $user = new User();
+    public function testAddBehavior() {
+        $this->assertFalse($this->object->hasBehavior('Timestamp'));
 
-        $this->assertTrue($user->getRepository()->hasRelation('Profile')); // has one
-        $this->assertTrue($user->getRepository()->hasRelation('Country')); // belongs to
+        $this->object->addBehavior(new TimestampBehavior());
 
-        $profile = new Profile();
-
-        $this->assertTrue($profile->getRepository()->hasRelation('User')); // belongs to
-
-        $country = new Country();
-
-        $this->assertTrue($country->getRepository()->hasRelation('Users')); // has many
-
-        $book = new Book();
-
-        $this->assertTrue($book->getRepository()->hasRelation('Genres')); // belongs to many
+        $this->assertTrue($this->object->hasBehavior('Timestamp'));
     }
 
-    /**
-     * Test that a model instance is returned from a find call.
-     */
-    public function testFind() {
+    public function testAddRelation() {
+        $this->assertFalse($this->object->hasRelation('Post'));
+
+        $this->object->addRelation(new OneToMany('Post', 'Titon\Test\Stub\Model\Post'));
+
+        $this->assertTrue($this->object->hasRelation('Post'));
+    }
+
+    public function testBelongsTo() {
+        $conditions = function() {};
+
+        $this->object->belongsTo('Country', 'Titon\Test\Stub\Model\Post', 'country_fk', $conditions);
+
+        $relation = $this->object->getRelation('Country');
+
+        $this->assertEquals('Country', $relation->getAlias());
+        $this->assertEquals('Titon\Test\Stub\Model\Post', $relation->getRelatedClass());
+        $this->assertEquals('country_fk', $relation->getPrimaryForeignKey());
+        $this->assertEquals(Relation::MANY_TO_ONE, $relation->getType());
+        $this->assertSame($conditions, $relation->getConditions());
+    }
+
+    public function testBelongsToMany() {
+        $conditions = function() {};
+
+        $this->object->belongsToMany('Roles', 'Titon\Test\Stub\Model\Role', 'user_roles', 'user_fk', 'role_fk', $conditions);
+
+        /** @type \Titon\Model\Relation\ManyToMany $relation */
+        $relation = $this->object->getRelation('Roles');
+
+        $this->assertEquals('Roles', $relation->getAlias());
+        $this->assertEquals('Titon\Test\Stub\Model\Role', $relation->getRelatedClass());
+        $this->assertEquals('user_fk', $relation->getPrimaryForeignKey());
+        $this->assertEquals('role_fk', $relation->getRelatedForeignKey());
+        $this->assertEquals(['table' => 'user_roles'], $relation->getJunction());
+        $this->assertEquals(Relation::MANY_TO_MANY, $relation->getType());
+        $this->assertSame($conditions, $relation->getConditions());
+    }
+
+    public function testExists() {
         $this->loadFixtures('Users');
 
-        $user1 = User::find(1);
-        $user2 = User::find(10);
-
-        $this->assertInstanceOf('Titon\Model\Model', $user1);
-        $this->assertInstanceOf('Titon\Model\Model', $user2);
-
-        $this->assertTrue($user1->exists());
-        $this->assertFalse($user2->exists());
-
-        $this->assertEquals([
-            'id' => 1,
-            'country_id' => 1,
-            'username' => 'miles',
-            'firstName' => 'Miles',
-            'lastName' => 'Johnson',
-            'password' => '1Z5895jf72yL77h',
-            'email' => 'miles@email.com',
-            'age' => 25,
-            'created' => '1988-02-26 21:22:34',
-            'modified' => null
-        ], $user1->toArray());
-
-        $this->assertEquals([], $user2->toArray());
+        $this->assertTrue(User::find(1)->exists());
+        $this->assertFalse(User::find(10)->exists());
     }
 
-    /**
-     * Test that direct record deletion works correctly.
-     */
-    public function testDelete() {
-        $this->loadFixtures('Users', 'Profiles');
-
-        $user = User::find(1);
-
-        $this->assertEquals(1, $user->id);
-        $this->assertTrue($user->exists());
-        $this->assertTrue($user->getRepository()->exists(1)); // check DB directly
-
-        $user->delete();
-
-        $this->assertEquals(null, $user->id);
-        $this->assertFalse($user->exists());
-        $this->assertFalse($user->getRepository()->exists(1)); // check DB directly
-
-        try {
-            $user->delete(); // should throw exception second time
-            $this->assertTrue(false);
-        } catch (Exception $e) {
-            $this->assertTrue(true);
-        }
-
-        // Records with no ID throw an error
-        $user2 = User::find(10);
-
-        try {
-            $user2->delete();
-            $this->assertTrue(false);
-        } catch (Exception $e) {
-            $this->assertTrue(true);
-        }
-
-        // Records with ID and no record should return false
-        $user3 = new User();
-        $user3->id = 15;
-
-        $this->assertEquals(0, $user3->delete());
-    }
-
-    /**
-     * Test that updating a record via active record pattern works.
-     */
-    public function testUpdateViaSave() {
-        $this->loadFixtures('Users');
-
-        $user = User::find(1);
-        $time = date('Y-m-d H:i:s');
-
-        $this->assertArraysEqual([
-            'id' => 1,
-            'country_id' => 1,
-            'username' => 'miles',
-            'firstName' => 'Miles',
-            'lastName' => 'Johnson',
-            'password' => '1Z5895jf72yL77h',
-            'email' => 'miles@email.com',
-            'age' => 25,
-            'created' => '1988-02-26 21:22:34',
-            'modified' => null
-        ], $user->toArray(), true);
-
-        $user->username = 'mj';
-        $user->modified = $time;
-
-        $this->assertEquals(1, $user->save(['validate' => false])); // record of ID on success
-
-        $this->assertArraysEqual([
-            'id' => 1,
-            'country_id' => 1,
-            'username' => 'mj',
-            'firstName' => 'Miles',
-            'lastName' => 'Johnson',
-            'password' => '1Z5895jf72yL77h',
-            'email' => 'miles@email.com',
-            'age' => 25,
-            'created' => '1988-02-26 21:22:34',
-            'modified' => $time
-        ], $user->toArray(), true);
-
-        // Without a find() first
-        $user = new User();
-        $user->id = 1;
-        $user->username = 'gearvOsh';
-
-        $this->assertEquals(1, $user->save()); // record of ID on success
-
-        $this->assertArraysEqual([
-            'id' => 1,
-            'country_id' => 1,
-            'username' => 'gearvOsh',
-            'firstName' => 'Miles',
-            'lastName' => 'Johnson',
-            'password' => '1Z5895jf72yL77h',
-            'email' => 'miles@email.com',
-            'age' => 25,
-            'created' => '1988-02-26 21:22:34',
-            'modified' => $time
-        ], User::find(1)->toArray(), true);
-    }
-
-    /**
-     * Test that inserting a record via active record pattern works.
-     */
-    public function testInsertViaSave() {
-        $this->loadFixtures('Users');
-
-        $user = new User();
-        $user->username = 'ironman';
-        $user->firstName = 'Tony';
-        $user->lastName = 'Stark';
-
-        $this->assertFalse($user->exists());
-        $this->assertEquals(6, $user->save(['validate' => false]));
-        $this->assertTrue($user->exists());
-
-        $this->assertArraysEqual([
-            'id' => 6,
-            'country_id' => null,
-            'username' => 'ironman',
-            'firstName' => 'Tony',
-            'lastName' => 'Stark',
-            'password' => null,
-            'email' => null,
-            'age' => null,
-            'created' => null,
-            'modified' => null
-        ], User::find(6)->toArray(), true);
-    }
-
-    /**
-     * Test that fill pays attention to fillable and guarded.
-     */
     public function testFill() {
-        $user = new User();
-        $user->fill(['country_id' => 1, 'username' => 'miles', 'firstName' => 'Miles', 'lastName' => 'Johnson', 'password' => '1Z5895jf72yL77h', 'email' => 'miles@email.com', 'age' => 25, 'created' => '1988-02-26 21:22:34']);
+        $this->object->fill(['country_id' => 1, 'username' => 'miles', 'firstName' => 'Miles', 'lastName' => 'Johnson', 'password' => '1Z5895jf72yL77h', 'email' => 'miles@email.com', 'age' => 25, 'created' => '1988-02-26 21:22:34']);
 
         $this->assertEquals([
             'username' => 'miles',
             'firstName' => 'Miles'
-        ], $user->toArray());
+        ], $this->object->toArray());
 
-        $user->fill(['username' => 'batman']);
+        $this->object->fill(['username' => 'batman']);
 
-        $this->assertEquals(['username' => 'batman'], $user->toArray());
+        $this->assertEquals(['username' => 'batman'], $this->object->toArray());
+    }
 
+    public function testFillFullyGuarded() {
         $profile = new Profile();
         $profile->fill(['user_id' => 4, 'lastLogin' => '2012-02-03 21:22:34', 'currentLogin' => '2013-06-06 19:11:03']);
 
-        $this->assertEquals([], $profile->toArray()); // fully guarded
+        $this->assertEquals([], $profile->toArray());
+    }
+
+    public function testGet() {
+        $this->loadFixtures('Users');
+
+        $user = User::find(1);
+
+        $this->assertEquals('Miles', $user->firstName);
+        $this->assertEquals('Miles', $user->get('firstName'));
+    }
+
+    public function testGetAccessor() {
+        $this->loadFixtures('Users');
+
+        $user = User::find(1);
+
+        $this->assertEquals([
+            'id' => 1,
+            'country_id' => 1,
+            'username' => 'miles',
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson',
+            'password' => '1Z5895jf72yL77h',
+            'email' => 'miles@email.com',
+            'age' => 25,
+            'created' => '1988-02-26 21:22:34',
+            'modified' => null
+        ], $user->toArray());
+
+        $this->assertEquals('Miles Johnson', $user->fullName);
+    }
+
+    public function testGetRepository() {
+        $repo = $this->object->getRepository();
+
+        $this->assertEquals('default', $repo->getConfig('connection'));
+        $this->assertEquals('users', $repo->getConfig('table'));
+        $this->assertEquals('', $repo->getConfig('prefix'));
+        $this->assertEquals('id', $repo->getConfig('primaryKey'));
+        $this->assertEquals(['title', 'name', 'id'], $repo->getConfig('displayField'));
+        $this->assertEquals('Titon\Test\Stub\Model\User', $repo->getConfig('entity'));
+    }
+
+    public function testGetRelation() {
+        $this->assertInstanceOf('Titon\Model\Relation\ManyToOne', $this->object->getRelation('Country'));
     }
 
     /**
-     * Test if a column is fillable.
+     * @expectedException \Titon\Model\Exception\MissingRelationException
      */
+    public function testGetRelationThrowsError() {
+        $this->object->getRelation('Posts');
+    }
+
+    public function testGetRelations() {
+        $this->assertEquals([
+            'Country' => (new ManyToOne('Country', 'Titon\Test\Stub\Model\Country'))->setPrimaryForeignKey(null)->setPrimaryModel($this->object),
+            'Profile' => (new OneToOne('Profile', 'Titon\Test\Stub\Model\Profile'))->setRelatedForeignKey(null)->setPrimaryModel($this->object)
+        ], $this->object->getRelations());
+    }
+
+    public function testGetRelationsFiltered() {
+        $this->assertEquals([
+            'Country' => (new ManyToOne('Country', 'Titon\Test\Stub\Model\Country'))->setPrimaryForeignKey(null)->setPrimaryModel($this->object)
+        ], $this->object->getRelations(Relation::MANY_TO_ONE));
+    }
+
+    public function testGetValidator() {
+        $validator = new Validator();
+        $validator->addField('username', 'username', [
+            'between' => [5, 25],
+            'alphaNumeric'
+        ]);
+        $validator->addField('firstName', 'firstName', ['alpha']);
+        $validator->addField('lastName', 'lastName', ['numeric']);
+
+        $this->assertEquals($validator, $this->object->getValidator());
+    }
+
+    public function testHasAccessor() {
+        $this->assertEquals(null, $this->object->hasAccessor('email'));
+        $this->assertEquals('getFullnameAttribute', $this->object->hasAccessor('fullName'));
+        $this->assertEquals('getFullNameAttribute', $this->object->hasAccessor('full_name'));
+    }
+
+    public function testHasMutator() {
+        $this->assertEquals(null, $this->object->hasMutator('email'));
+        $this->assertEquals('setFullnameAttribute', $this->object->hasMutator('fullName'));
+        $this->assertEquals('setFullNameAttribute', $this->object->hasMutator('full_name'));
+    }
+
+    public function testHasOne() {
+        $conditions = function() {};
+
+        $this->object->hasOne('Profile', 'Titon\Test\Stub\Model\Profile', 'user_fk', false, $conditions);
+
+        $relation = $this->object->getRelation('Profile');
+
+        $this->assertEquals('Profile', $relation->getAlias());
+        $this->assertEquals('Titon\Test\Stub\Model\Profile', $relation->getRelatedClass());
+        $this->assertEquals('user_fk', $relation->getRelatedForeignKey());
+        $this->assertEquals(Relation::ONE_TO_ONE, $relation->getType());
+        $this->assertFalse($relation->isDependent());
+        $this->assertSame($conditions, $relation->getConditions());
+    }
+
+    public function testHasMany() {
+        $conditions = function() {};
+
+        $this->object->hasMany('Posts', 'Titon\Test\Stub\Model\Post', 'user_fk', false, $conditions);
+
+        $relation = $this->object->getRelation('Posts');
+
+        $this->assertEquals('Posts', $relation->getAlias());
+        $this->assertEquals('Titon\Test\Stub\Model\Post', $relation->getRelatedClass());
+        $this->assertEquals('user_fk', $relation->getRelatedForeignKey());
+        $this->assertEquals(Relation::ONE_TO_MANY, $relation->getType());
+        $this->assertFalse($relation->isDependent());
+        $this->assertSame($conditions, $relation->getConditions());
+    }
+
     public function testIsFillable() {
-        $user = new User();
         $profile = new Profile();
 
-        $this->assertTrue($user->isFillable('username'));
-        $this->assertFalse($user->isFillable('password'));
+        $this->assertTrue($this->object->isFillable('username'));
+        $this->assertFalse($this->object->isFillable('password'));
         $this->assertTrue($profile->isFillable('lastLogin')); // All allowed
     }
 
-    /**
-     * Test if a column is guarded.
-     */
     public function testIsGuarded() {
-        $user = new User();
         $profile = new Profile();
 
-        $this->assertFalse($user->isGuarded('username'));
-        $this->assertTrue($user->isGuarded('password'));
+        $this->assertFalse($this->object->isGuarded('username'));
+        $this->assertTrue($this->object->isGuarded('password'));
         $this->assertTrue($profile->isGuarded('lastLogin')); // All denied
     }
 
-    /**
-     * Test if all columns are guarded.
-     */
     public function testIsFullyGuarded() {
-        $user = new User();
         $profile = new Profile();
 
-        $this->assertFalse($user->isFullyGuarded());
+        $this->assertFalse($this->object->isFullyGuarded());
         $this->assertTrue($profile->isFullyGuarded());
     }
 
-    /**
-     * Test that validation triggers.
-     */
+    public function testLoadRelationships() {
+        $conditions = function() {};
+        $model = new ModelRelationStub(
+            [
+                'Profile' => 'Titon\Test\Stub\Model\Profile'
+            ],
+            [
+                'Topics' => 'Titon\Test\Stub\Model\Topic',
+                'Posts' => ['model' => 'Titon\Test\Stub\Model\Post', 'relatedForeignKey' => 'user_fk']
+            ],
+            [
+                'Country' => ['model' => 'Titon\Test\Stub\Model\Country', 'conditions' => $conditions]
+            ],
+            [
+                'Roles' => ['model' => 'Titon\Test\Stub\Model\Role', 'junction' => 'user_roles', 'foreignKey' => 'user_fk']
+            ]
+        );
+
+        $relations = $model->getRelations();
+
+        $this->assertEquals([
+            'Country' => (new ManyToOne('Country', 'Titon\Test\Stub\Model\Country'))->setPrimaryModel($model)->setPrimaryForeignKey(null)->setConditions($conditions),
+            'Roles' => (new ManyToMany('Roles', 'Titon\Test\Stub\Model\Role'))->setPrimaryModel($model)->setPrimaryForeignKey('user_fk')->setRelatedForeignKey(null)->setJunction('user_roles'),
+            'Profile' => (new OneToOne('Profile', 'Titon\Test\Stub\Model\Profile'))->setPrimaryModel($model)->setRelatedForeignKey(null)->setDependent(true),
+            'Topics' => (new OneToMany('Topics', 'Titon\Test\Stub\Model\Topic'))->setPrimaryModel($model)->setRelatedForeignKey(null)->setDependent(true),
+            'Posts' => (new OneToMany('Posts', 'Titon\Test\Stub\Model\Post'))->setPrimaryModel($model)->setRelatedForeignKey('user_fk')->setDependent(true),
+        ], $relations);
+    }
+
+    public function testSet() {
+        $user = new User();
+        $user->email = 'miles@email.com';
+
+        $this->assertEquals('miles@email.com', $user->get('email'));
+    }
+
+    public function testSetMutator() {
+        $user = new User();
+        $user->fullName = 'Miles Johnson';
+
+        $this->assertEquals([
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson'
+        ], $user->toArray());
+    }
+
+    public function testSetValidator() {
+        $validator = new Validator();
+
+        $this->object->setValidator($validator);
+
+        $this->assertSame($validator, $this->object->getValidator());
+    }
+
     public function testValidate() {
         $this->loadFixtures('Users');
 
@@ -309,49 +326,15 @@ class ModelTest extends TestCase {
         ], $user->getErrors());
     }
 
-    /**
-     * Test that magic get accessors work.
-     */
-    public function testGetAccessor() {
-        $this->loadFixtures('Users');
+}
 
-        $user = User::find(1);
-
-        $this->assertEquals([
-            'id' => 1,
-            'country_id' => 1,
-            'username' => 'miles',
-            'firstName' => 'Miles',
-            'lastName' => 'Johnson',
-            'password' => '1Z5895jf72yL77h',
-            'email' => 'miles@email.com',
-            'age' => 25,
-            'created' => '1988-02-26 21:22:34',
-            'modified' => null
-        ], $user->toArray());
-
-        $this->assertEquals('Miles', $user->firstName);
-        $this->assertEquals('Johnson', $user->lastName);
-
-        // Accessor defined for a custom field
-        $this->assertEquals('Miles Johnson', $user->fullName);
+// Stub model for testing loadRelationships()
+class ModelRelationStub extends Model {
+    public function __construct(array $hasOne, array $hasMany, array $belongsTo, array $belongsToMany) {
+        $this->hasOne = $hasOne;
+        $this->hasMany = $hasMany;
+        $this->belongsTo = $belongsTo;
+        $this->belongsToMany = $belongsToMany;
+        $this->initialize();
     }
-
-    /**
-     * Test that magic set mutators work.
-     */
-    public function testSetMutator() {
-        $this->loadFixtures('Users');
-
-        $user = new User();
-        $user->email = 'miles@email.com';
-        $user->fullName = 'Miles Johnson';
-
-        $this->assertEquals([
-            'email' => 'miles@email.com',
-            'firstName' => 'Miles',
-            'lastName' => 'Johnson'
-        ], $user->toArray());
-    }
-
 }
