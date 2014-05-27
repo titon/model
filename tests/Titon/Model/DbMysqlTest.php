@@ -10,8 +10,7 @@ class DbMysqlTest extends AbstractDbTest {
     protected function setUp() {
         parent::setUp();
 
-        Database::registry()
-            ->addDriver('default', new MysqlDriver(Config::get('db')));
+        Database::registry()->addDriver('default', new MysqlDriver(Config::get('db')));
     }
 
 }

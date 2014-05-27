@@ -18,7 +18,6 @@ use Titon\Db\RepositoryAware;
 use Titon\Event\Event;
 use Titon\Event\Listener;
 use Titon\Event\Traits\Emittable;
-use Titon\Model\Exception\InvalidRelationStructureException;
 use Titon\Model\Exception\MissingPrimaryKeyException;
 use Titon\Model\Exception\MissingRelationException;
 use Titon\Model\Relation\ManyToMany;
@@ -135,6 +134,20 @@ class Model extends Entity implements Listener {
     protected $validate = [];
 
     /**
+     * Relation aliases indexed by model class name.
+     *
+     * @type string[]
+     */
+    protected $_aliases = [];
+
+    /**
+     * If enabled, will delete dependent relations when the parent record is deleted.
+     *
+     * @type bool
+     */
+    protected $_cascade = true;
+
+    /**
      * List of validation errors.
      *
      * @type string[]
@@ -148,6 +161,14 @@ class Model extends Entity implements Listener {
      * @type bool
      */
     protected $_exists = false;
+
+    /**
+     * External models that have been linked as relationship data.
+     * These links will be saved to the database alongside the current model.
+     *
+     * @type \Titon\Model\Model[]
+     */
+    protected $_links = [];
 
     /**
      * Model to model relationships, the "ORM".
@@ -196,6 +217,7 @@ class Model extends Entity implements Listener {
         $relation->setPrimaryModel($this);
 
         $this->_relations[$relation->getAlias()] = $relation;
+        $this->_aliases[$relation->getRelatedClass()] = $relation->getAlias();
 
         return $this;
     }
@@ -249,108 +271,90 @@ class Model extends Entity implements Listener {
      *
      * @see \Titon\Db\Repository::delete()
      *
-     * @param array $options
+     * @param array $options {
+     *      @type bool $cascade     Will recursively delete relation records if `dependent` is true
+     *      @type bool $atomic      Will wrap the delete query and all nested queries in a transaction
+     * }
      * @return int
      * @throws \Titon\Model\Exception\MissingPrimaryKeyException
      */
     public function delete(array $options = []) {
+        $options = $options + ['cascade' => true, 'atomic' => true];
         $id = $this->get($this->primaryKey);
 
         if (!$id) {
             throw new MissingPrimaryKeyException(sprintf('Cannot delete %s record if no ID is present', get_class($this)));
         }
 
-        if ($count = $this->getRepository()->delete($id, $options)) {
-            $this->_data = [];
-            $this->_exists = false;
+        // Set cascade flag
+        $this->_cascade = $options['cascade'];
 
-            return $count;
-        }
+        $model = $this;
+        $operation = function() use ($model, $id, $options) {
+            if ($count = $this->getRepository()->delete($id, $options)) {
+                $model->_data = [];
+                $model->_exists = false;
+                $model->_cascade = true;
 
-        return 0;
-    }
-
-    /**
-     * Loop through all table relations and delete dependent records using the ID as a base.
-     * Will return a count of how many dependent records were deleted.
-     *
-     * @param int|int[] $id
-     * @param bool $cascade Will delete related records if true
-     * @return int The count of records deleted
-     * @throws \Titon\Db\Exception\QueryFailureException
-     * @throws \Exception
-     */
-    /*public function deleteDependents($id, $cascade = true) {
-        $count = 0;
-        $driver = $this->getDriver();
-
-        if (!$driver->startTransaction()) {
-            throw new QueryFailureException('Failed to start database transaction');
-        }
-
-        try {
-            foreach ($this->getRelations() as $relation) {
-                if (!$relation->isDependent()) {
-                    continue;
-                }
-
-                switch ($relation->getType()) {
-                    case Relation::ONE_TO_ONE:
-                    case Relation::ONE_TO_MANY:
-                        $relatedRepo = $relation->getRelatedRepository();
-                        $results = [];
-
-                        // Fetch IDs before deletion
-                        // Only delete if relations exist
-                        if ($cascade && $relatedRepo->hasRelations()) {
-                            $results = $relatedRepo
-                                ->select($relatedRepo->getPrimaryKey())
-                                ->where($relation->getRelatedForeignKey(), $id)
-                                ->all();
-                        }
-
-                        // Delete all records at once
-                        $count += $relatedRepo
-                            ->query(Query::DELETE)
-                            ->where($relation->getRelatedForeignKey(), $id)
-                            ->save();
-
-                        // Loop through the records and cascade delete dependents
-                        if ($results) {
-                            $dependentIDs = [];
-
-                            foreach ($results as $result) {
-                                $dependentIDs[] = $result->get($relatedRepo->getPrimaryKey());
-                            }
-
-                            $count += $relatedRepo->deleteDependents($dependentIDs, $cascade);
-                        }
-                    break;
-
-                    case Relation::MANY_TO_MANY:
-                        $junctionRepo = $relation->getJunctionRepository();
-
-                        // Only delete the junction records
-                        // The related records should stay
-                        $count += $junctionRepo
-                            ->query(Query::DELETE)
-                            ->where($relation->getForeignKey(), $id)
-                            ->save();
-                    break;
-                }
+                return $count;
             }
 
-            $driver->commitTransaction();
+            return 0;
+        };
 
-        // Rollback and re-throw exception
-        } catch (Exception $e) {
-            $driver->rollbackTransaction();
-
-            throw $e;
+        // Wrap in a transaction if atomic
+        if ($options['atomic']) {
+            $count = $this->getRepository()->getDriver()->transaction($operation);
+        } else {
+            $count = call_user_func($operation);
         }
 
         return $count;
-    }*/
+    }
+
+    /**
+     * Loop through all relations and delete dependent records using the ID as a base.
+     *
+     * This method should not be called directly.
+     *
+     * @param \Titon\Event\Event $event
+     * @param int $id
+     */
+    public function deleteDependents(Event $event, $id) {
+        if (!$this->_cascade) {
+            return;
+        }
+
+        foreach ($this->getRelations() as $relation) {
+            if (!$relation->isDependent()) {
+                continue;
+            }
+
+            switch ($relation->getType()) {
+
+                // Delete related records where the foreign key in the related table matches the current model
+                case Relation::ONE_TO_ONE:
+                case Relation::ONE_TO_MANY:
+                    $relation->getRelatedModel()->getRepository()->deleteMany(function(Query $query) use ($relation, $id) {
+                        $query->where($relation->getRelatedForeignKey(), $id);
+                    });
+                break;
+
+                // Delete records where the foreign key in the junction table matches the current model
+                case Relation::MANY_TO_MANY:
+                    /** @type \Titon\Model\Relation\ManyToMany $relation */
+                    $relation->getJunctionRepository()->deleteMany(function(Query $query) use ($relation, $id) {
+                        $query->where($relation->getPrimaryForeignKey(), $id);
+                    });
+                break;
+
+                // Parent records cannot be deleted via cascade
+                case Relation::MANY_TO_ONE:
+                    continue;
+                break;
+            }
+        }
+    }
 
     /**
      * Return a boolean on whether the current record exists.
@@ -549,12 +553,39 @@ class Model extends Entity implements Listener {
     }
 
     /**
+     * Return the display field.
+     *
+     * @return string
+     */
+    public function getDisplayField() {
+        return $this->displayField;
+    }
+
+    /**
      * Return the validator errors indexed by attribute.
      *
      * @return string[]
      */
     public function getErrors() {
         return $this->_errors;
+    }
+
+    /**
+     * Return all linked models.
+     *
+     * @return \Titon\Model\Model[]
+     */
+    public function getLinks() {
+        return $this->_links;
+    }
+
+    /**
+     * Return the primary key.
+     *
+     * @return string
+     */
+    public function getPrimaryKey() {
+        return $this->primaryKey;
     }
 
     /**
@@ -612,6 +643,24 @@ class Model extends Entity implements Listener {
         }
 
         return $relations;
+    }
+
+    /**
+     * Return the table name without prefix.
+     *
+     * @return string
+     */
+    public function getTable() {
+        return $this->table;
+    }
+
+    /**
+     * Return the table prefix.
+     *
+     * @return string
+     */
+    public function getTablePrefix() {
+        return $this->prefix;
     }
 
     /**
@@ -768,6 +817,43 @@ class Model extends Entity implements Listener {
     }
 
     /**
+     * Link an external model to the primary model. Once the primary is saved, the links will be saved as well.
+     *
+     * @param \Titon\Model\Model $model
+     * @return $this
+     * @throws \Titon\Model\Exception\MissingRelationException
+     */
+    public function link(Model $model) {
+        $class = get_class($model);
+
+        if (empty($this->_aliases[$class])) {
+            throw new MissingRelationException(sprintf('No relation found for %s', $class));
+        }
+
+        $alias = $this->_aliases[$class];
+        $relation = $this->getRelation($alias);
+
+        switch ($relation->getType()) {
+            case Relation::MANY_TO_ONE:
+                $this->_links[$alias] = $model;
+
+                // Include the foreign key in the current data
+                $this->set($relation->getPrimaryForeignKey(), $model->get($model->getPrimaryKey()));
+            break;
+
+            case Relation::ONE_TO_ONE:
+                $this->_links[$alias] = $model;
+            break;
+
+            default:
+                $this->_links[$alias][] = $model;
+            break;
+        }
+
+        return $this;
+    }
+
+    /**
      * Load relationships by reflecting current model properties.
      *
      * @return \Titon\Model\Model
@@ -885,9 +971,15 @@ class Model extends Entity implements Listener {
     public function registerEvents() {
         return [
             'db.preSave' => 'preSave',
-            'db.postSave' => 'postSave',
+            'db.postSave' => [
+                ['method' => 'upsertRelations', 'priority' => 1], // Relations must be saved before anything else can happen
+                ['method' => 'postSave', 'priority' => 2]
+            ],
             'db.preDelete' => 'preDelete',
-            'db.postDelete' => 'postDelete',
+            'db.postDelete' => [
+                ['method' => 'postDelete', 'priority' => 1], // Allow them to toggle the cascade if need be
+                ['method' => 'deleteDependents', 'priority' => 2],
+            ],
             'db.preFind' => 'preFind',
             'db.postFind' => 'postFind',
             'model.preValidate' => 'preValidate',
@@ -901,25 +993,40 @@ class Model extends Entity implements Listener {
      *
      * @see \Titon\Db\Repository::upsert()
      *
-     * @param array $options
+     * @param array $options {
+     *      @type bool $validate    Will validate the current record of data before saving
+     *      @type bool $atomic      Will wrap the save query and all nested queries in a transaction
+     * }
      * @return int
      */
     public function save(array $options = []) {
-        $options = $options + ['validate' => true];
+        $options = $options + ['validate' => true, 'atomic' => true];
         $passed = $options['validate'] ? $this->validate() : true;
 
+        // Validation failed, exit early
         if (!$passed) {
             return 0;
         }
 
-        $data = $this->toArray();
-        $id = 0;
+        $model = $this;
+        $operation = function() use ($model, $options) {
+            if ($id = $model->getRepository()->upsert($model->toArray(), null, $options)) {
+                $model->set($model->getPrimaryKey(), $id);
+                $model->_exists = true;
 
-        if ($data && ($id = $this->getRepository()->upsert($data, null, $options))) {
-            $this->_exists = true;
-            $this->set($this->primaryKey, $id);
+                return $id;
+            }
+
+            $model->_exists = false;
+
+            return 0;
+        };
+
+        // Wrap in a transaction if atomic
+        if ($options['atomic']) {
+            $id = $this->getRepository()->getDriver()->transaction($operation);
         } else {
-            $this->_exists = false;
+            $id = call_user_func($operation);
         }
 
         return $id;
@@ -962,146 +1069,94 @@ class Model extends Entity implements Listener {
     }
 
     /**
-     * Either update or insert related data for the primary repository's ID.
-     * Each relation will handle upserting differently.
+     * Unlink an external model that has been tied to this model.
      *
-     * @param int $id
-     * @param array $data
-     * @param array $options
-     * @return int
-     * @throws \Titon\Db\Exception\QueryFailureException
-     * @throws \Exception
+     * @param \Titon\Model\Model $model
+     * @return $this
+     * @throws \Titon\Model\Exception\MissingRelationException
      */
-    /*public function upsertRelations($id, array $data, array $options = []) {
-        $upserted = 0;
-        $driver = $this->getDriver();
+    public function unlink(Model $model) {
+        $class = get_class($model);
 
-        if (!$data) {
-            return $upserted;
+        if (empty($this->_aliases[$class])) {
+            throw new MissingRelationException(sprintf('No relation found for %s', $class));
         }
 
-        if (!$driver->startTransaction()) {
-            throw new QueryFailureException('Failed to start database transaction');
+        $alias = $this->_aliases[$class];
+        $relation = $this->getRelation($alias);
+
+        switch ($relation->getType()) {
+            case Relation::MANY_TO_ONE:
+            case Relation::ONE_TO_ONE:
+                if ($this->_links[$alias] === $model) {
+                    unset($this->_links[$alias]);
+                }
+            break;
+
+            default:
+                foreach ($this->_links[$alias] as $i => $link) {
+                    if ($link === $model) {
+                        unset($this->_links[$alias][$i]);
+                        break;
+                    }
+                }
+            break;
         }
 
-        try {
-            foreach ($data as $alias => $relatedData) {
-                if (empty($data[$alias])) {
+        return $this;
+    }
+
+    /**
+     * Either update or insert related data for the primary model.
+     * Each relation will handle upserting differently depending on type.
+     *
+     * This method should not be called directly.
+     *
+     * @param \Titon\Event\Event $event
+     * @param int $id
+     * @param string $type
+     */
+    public function upsertRelations(Event $event, $id, $type) {
+        if ($type === Query::MULTI_INSERT) {
+            return;
+        }
+
+        foreach ($this->getLinks() as $alias => $links) {
+            $relation = $this->getRelation($alias);
+
+            switch ($relation->getType()) {
+                // Append the foreign key with the current ID
+                case Relation::ONE_TO_ONE:
+                    $links->set($relation->getRelatedForeignKey(), $id);
+                    $links->save(['atomic' => false]);
+                break;
+
+                // Loop through and append the foreign key with the current ID
+                case Relation::ONE_TO_MANY:
+                    /** @type \Titon\Model\Model[] $links */
+                    foreach ($links as $link) {
+                        $link->set($relation->getRelatedForeignKey(), $id);
+                        $link->save(['atomic' => false]);
+                    }
+                break;
+
+                // Loop through each set of data and upsert to gather an ID
+                // Use that foreign ID with the current ID and save in the junction table
+                case Relation::MANY_TO_MANY:
+                    // @todo
+                break;
+
+                // Do not save belongs to relations
+                // We simply inherit the foreign key value during `link()`
+                case Relation::MANY_TO_ONE:
                     continue;
-                }
-
-                $relation = $this->getRelation($alias);
-                $relatedRepo = $relation->getRelatedRepository();
-                $fk = $relation->getForeignKey();
-                $rfk = $relation->getRelatedForeignKey();
-                $rpk = $relatedRepo->getPrimaryKey();
-
-                switch ($relation->getType()) {
-                    // Append the foreign key with the current ID
-                    case Relation::ONE_TO_ONE:
-                        $relatedData[$rfk] = $id;
-                        $relatedData[$rpk] = $relatedRepo->upsert($relatedData, null, $options);
-
-                        if (!$relatedData[$rpk]) {
-                            throw new QueryFailureException(sprintf('Failed to upsert %s relational data', $alias));
-                        }
-
-                        $relatedData = $relatedRepo->data;
-
-                        $upserted++;
-                    break;
-
-                    // Loop through and append the foreign key with the current ID
-                    case Relation::ONE_TO_MANY:
-                        foreach ($relatedData as $i => $hasManyData) {
-                            $hasManyData[$rfk] = $id;
-                            $hasManyData[$rpk] = $relatedRepo->upsert($hasManyData, null, $options);
-
-                            if (!$hasManyData[$rpk]) {
-                                throw new QueryFailureException(sprintf('Failed to upsert %s relational data', $alias));
-                            }
-
-                            $hasManyData = $relatedRepo->data;
-                            $relatedData[$i] = $hasManyData;
-
-                            $upserted++;
-                        }
-                    break;
-
-                    // Loop through each set of data and upsert to gather an ID
-                    // Use that foreign ID with the current ID and save in the junction table
-                    case Relation::MANY_TO_MANY:
-                        $junctionRepo = $relation->getJunctionRepository();
-                        $jpk = $junctionRepo->getPrimaryKey();
-
-                        foreach ($relatedData as $i => $habtmData) {
-                            $junctionData = [$fk => $id];
-
-                            // Existing record by junction foreign key
-                            if (isset($habtmData[$rfk])) {
-                                $foreign_id = $habtmData[$rfk];
-                                unset($habtmData[$rfk]);
-
-                                if ($habtmData) {
-                                    $foreign_id = $relatedRepo->upsert($habtmData, $foreign_id, $options);
-                                }
-
-                            // Existing record by relation primary key
-                            // New record
-                            } else {
-                                $foreign_id = $relatedRepo->upsert($habtmData, null, $options);
-                                $habtmData = $relatedRepo->data;
-                            }
-
-                            if (!$foreign_id) {
-                                throw new QueryFailureException(sprintf('Failed to upsert %s relational data', $alias));
-                            }
-
-                            $junctionData[$rfk] = $foreign_id;
-
-                            // Only create the record if the junction doesn't already exist
-                            $exists = $junctionRepo->select()
-                                ->where($fk, $id)
-                                ->where($rfk, $foreign_id)
-                                ->first();
-
-                            if (!$exists) {
-                                $junctionData[$jpk] = $junctionRepo->upsert($junctionData, null, $options);
-
-                                if (!$junctionData[$jpk]) {
-                                    throw new QueryFailureException(sprintf('Failed to upsert %s junction data', $alias));
-                                }
-                            } else {
-                                $junctionData = $exists->toArray();
-                            }
-
-                            $habtmData['Junction'] = $junctionData;
-                            $relatedData[$i] = $habtmData;
-
-                            $upserted++;
-                        }
-                    break;
-
-                    // Can not save belongs to relations
-                    case Relation::MANY_TO_ONE:
-                        continue;
-                    break;
-                }
-
-                $this->setData([$alias => $relatedData]);
+                break;
             }
-
-            $driver->commitTransaction();
-
-        // Rollback and re-throw exception
-        } catch (Exception $e) {
-            $driver->rollbackTransaction();
-
-            throw $e;
         }
 
-        return $upserted;
-    }*/
+        // Reset the links
+        $this->_links = [];
+    }
 
     /**
      * Validate the current set of data against the models validation rules.
@@ -1205,7 +1260,7 @@ class Model extends Entity implements Listener {
      * @see \Titon\Db\Repository::query()
      */
     public static function query($type) {
-        return static::repository()->query($type);
+        return new QueryBuilder(static::repository()->query($type), static::getInstance());
     }
 
     /**
@@ -1258,58 +1313,5 @@ class Model extends Entity implements Listener {
     public static function updateMany(array $data, Closure $conditions, array $options = []) {
         return static::repository()->updateMany($data, $conditions, $options);
     }
-
-    /**
-     * Validate that relation data is structured correctly.
-     * Will only validate the top-level dimensions.
-     *
-     * @uses Titon\Utility\Hash
-     *
-     * @param array $data
-     * @throws \Titon\Model\Exception\InvalidRelationStructureException
-     *
-    protected function _validateRelationData(array $data) {
-        foreach ($this->getRelations() as $alias => $relation) {
-            if (empty($data[$alias])) {
-                continue;
-            }
-
-            $relatedData = $data[$alias];
-            $type = $relation->getType();
-
-            switch ($type) {
-                // Only child records can be validated
-                case Relation::MANY_TO_ONE:
-                    continue;
-                break;
-
-                // Both require a numerical indexed array
-                // With each value being an array of data
-                case Relation::ONE_TO_MANY:
-                case Relation::MANY_TO_MANY:
-                    if (!Hash::isNumeric(array_keys($relatedData))) {
-                        throw new InvalidRelationStructureException(sprintf('%s related data must be structured in a numerical multi-dimension array', $alias));
-                    }
-
-                    if ($type === Relation::MANY_TO_MANY) {
-                        $isNotArray = Hash::some($relatedData, function($value) {
-                            return !is_array($value);
-                        });
-
-                        if ($isNotArray) {
-                            throw new InvalidRelationStructureException(sprintf('%s related data values must be structured arrays', $alias));
-                        }
-                    }
-                break;
-
-                // A single dimension of data
-                case Relation::ONE_TO_ONE:
-                    if (Hash::isNumeric(array_keys($relatedData))) {
-                        throw new InvalidRelationStructureException(sprintf('%s related data must be structured in a single-dimension array', $alias));
-                    }
-                break;
-            }
-        }
-    }*/
 
 }
