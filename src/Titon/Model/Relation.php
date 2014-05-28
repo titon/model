@@ -78,6 +78,13 @@ interface Relation {
     public function getRelatedModel();
 
     /**
+     * Query the database for records that supply the current relationship.
+     *
+     * @return \Titon\Db\Entity|\Titon\Db\EntityCollection
+     */
+    public function getResults();
+
+    /**
      * Return the type of relation.
      *
      * @return string

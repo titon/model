@@ -14,12 +14,13 @@ use Titon\Db\Entity;
 use Titon\Db\Finder;
 use Titon\Db\Query;
 use Titon\Db\Repository;
-use Titon\Db\RepositoryAware;
 use Titon\Event\Event;
 use Titon\Event\Listener;
 use Titon\Event\Traits\Emittable;
+use Titon\Model\Exception\MassAssignmentException;
 use Titon\Model\Exception\MissingPrimaryKeyException;
 use Titon\Model\Exception\MissingRelationException;
+use Titon\Model\Exception\RelationQueryFailureException;
 use Titon\Model\Relation\ManyToMany;
 use Titon\Model\Relation\ManyToOne;
 use Titon\Model\Relation\OneToMany;
@@ -40,7 +41,7 @@ use \Closure;
  * @package Titon\Model
  */
 class Model extends Entity implements Listener {
-    use Emittable, Instanceable, RepositoryAware;
+    use Emittable, Instanceable;
 
     /**
      * Mapping of many-to-one relations.
@@ -319,23 +320,26 @@ class Model extends Entity implements Listener {
      *
      * @param \Titon\Event\Event $event
      * @param int $id
+     * @throws \Titon\Model\Exception\RelationQueryFailureException
      */
     public function deleteDependents(Event $event, $id) {
         if (!$this->_cascade) {
             return;
         }
 
-        foreach ($this->getRelations() as $relation) {
+        foreach ($this->getRelations() as $alias => $relation) {
             if (!$relation->isDependent()) {
                 continue;
             }
+
+            $result = null;
 
             switch ($relation->getType()) {
 
                 // Delete related records where the foreign key in the related table matches the current model
                 case Relation::ONE_TO_ONE:
                 case Relation::ONE_TO_MANY:
-                    $relation->getRelatedModel()->getRepository()->deleteMany(function(Query $query) use ($relation, $id) {
+                    $result = $relation->getRelatedModel()->getRepository()->deleteMany(function(Query $query) use ($relation, $id) {
                         $query->where($relation->getRelatedForeignKey(), $id);
                     });
                 break;
@@ -343,7 +347,7 @@ class Model extends Entity implements Listener {
                 // Delete records where the foreign key in the junction table matches the current model
                 case Relation::MANY_TO_MANY:
                     /** @type \Titon\Model\Relation\ManyToMany $relation */
-                    $relation->getJunctionRepository()->deleteMany(function(Query $query) use ($relation, $id) {
+                    $result = $relation->getJunctionRepository()->deleteMany(function(Query $query) use ($relation, $id) {
                         $query->where($relation->getPrimaryForeignKey(), $id);
                     });
                 break;
@@ -352,6 +356,10 @@ class Model extends Entity implements Listener {
                 case Relation::MANY_TO_ONE:
                     continue;
                 break;
+            }
+
+            if (!$result) {
+                throw new RelationQueryFailureException(sprintf('Failed to delete %s related record(s)', $alias));
             }
         }
     }
@@ -370,12 +378,13 @@ class Model extends Entity implements Listener {
      *
      * @param array $data
      * @return \Titon\Model\Model
+     * @throws \Titon\Model\Exception\MassAssignmentException
      */
     public function fill(array $data) {
         $this->flush();
 
-        if ($this->isFullyGuarded() || !$data) {
-            return $this;
+        if ($this->isFullyGuarded()) {
+            throw new MassAssignmentException(sprintf('Cannot assign attributes as %s is locked', get_class($this)));
         }
 
         foreach ($data as $key => $value) {
@@ -401,152 +410,24 @@ class Model extends Entity implements Listener {
     }
 
     /**
-     * Once the primary query has been executed and the results have been fetched,
-     * loop over all sub-queries and fetch related data.
-     *
-     * The related data will be added to the array indexed by the relation alias.
-     *
-     * @uses Titon\Utility\Hash
-     *
-     * @param \Titon\Db\Query $query
-     * @param Entity $result
-     * @param array $options
-     * @return \Titon\Db\Entity
-     */
-    /*public function fetchRelations(Query $query, Entity $result, array $options = []) {
-        $queries = $query->getRelationQueries();
-
-        if (!$queries) {
-            return $result;
-        }
-
-        foreach ($queries as $alias => $subQuery) {
-            $newQuery = clone $subQuery;
-            $relation = $this->getRelation($alias);
-            $relatedRepo = $relation->getRelatedRepository();
-            $relatedClass = get_class($relatedRepo);
-
-            switch ($relation->getType()) {
-
-                // Has One
-                // The related table should be pointing to this table
-                // So use this ID in the related foreign key
-                // Since we only want one record, limit it and single fetch
-                case Relation::ONE_TO_ONE:
-                    $foreignValue = $result[$this->getPrimaryKey()];
-
-                    $newQuery
-                        ->where($relation->getRelatedForeignKey(), $foreignValue)
-                        ->cache([$relatedClass, 'fetchOneToOne', $foreignValue])
-                        ->limit(1);
-
-                    $result->set($alias, function() use ($newQuery, $options) {
-                        return $newQuery->first($options);
-                    });
-                break;
-
-                // Has Many
-                // The related tables should be pointing to this table
-                // So use this ID in the related foreign key
-                // Since we want multiple records, fetch all with no limit
-                case Relation::ONE_TO_MANY:
-                    $foreignValue = $result[$this->getPrimaryKey()];
-
-                    $newQuery
-                        ->where($relation->getRelatedForeignKey(), $foreignValue)
-                        ->cache([$relatedClass, 'fetchOneToMany', $foreignValue]);
-
-                    $result->set($alias, function() use ($newQuery, $options) {
-                        return $newQuery->all($options);
-                    });
-                break;
-
-                // Belongs To
-                // This table should be pointing to the related table
-                // So use the foreign key as the related ID
-                // We should only be fetching a single record
-                case Relation::MANY_TO_ONE:
-                    $foreignValue = $result[$relation->getForeignKey()];
-
-                    $newQuery
-                        ->where($relatedRepo->getPrimaryKey(), $foreignValue)
-                        ->cache([$relatedClass, 'fetchManyToOne', $foreignValue])
-                        ->limit(1);
-
-                    $result->set($alias, function() use ($newQuery, $options) {
-                        return $newQuery->first($options);
-                    });
-                break;
-
-                // Has And Belongs To Many
-                // This table points to a related table through a junction table
-                // Query the junction table for lookup IDs pointing to the related data
-                case Relation::MANY_TO_MANY:
-                    $foreignValue = $result[$this->getPrimaryKey()];
-
-                    if (!$foreignValue) {
-                        continue;
-                    }
-
-                    $result->set($alias, function() use ($relation, $newQuery, $foreignValue, $options) {
-                        $relatedRepo = $relation->getRelatedRepository();
-                        $relatedClass = get_class($relatedRepo);
-                        $lookupIDs = [];
-
-                        // Fetch the related records using the junction IDs
-                        $junctionRepo = $relation->getJunctionRepository();
-                        $junctionResults = $junctionRepo
-                            ->select()
-                            ->where($relation->getForeignKey(), $foreignValue)
-                            ->cache([get_class($junctionRepo), 'fetchManyToMany', $foreignValue])
-                            ->all();
-
-                        if (!$junctionResults) {
-                            return [];
-                        }
-
-                        foreach ($junctionResults as $result) {
-                            $lookupIDs[] = $result->get($relation->getRelatedForeignKey());
-                        }
-
-                        $m2mResults = $newQuery
-                            ->where($relatedRepo->getPrimaryKey(), $lookupIDs)
-                            ->cache([$relatedClass, 'fetchManyToMany', $lookupIDs])
-                            ->all($options);
-
-                        // Include the junction data
-                        foreach ($m2mResults as $i => $m2mResult) {
-                            foreach ($junctionResults as $junctionResult) {
-                                if ($junctionResult[$relation->getRelatedForeignKey()] == $m2mResult[$relatedRepo->getPrimaryKey()]) {
-                                    $m2mResults[$i]->set('Junction', $junctionResult);
-                                }
-                            }
-                        }
-
-                        return $m2mResults;
-                    });
-                break;
-            }
-
-            // Trigger query immediately
-            if (!empty($options['eager'])) {
-                $result->get($alias);
-            }
-
-            unset($newQuery);
-        }
-
-        return $result;
-    }*/
-
-    /**
      * {@inheritdoc}
      */
     public function get($key, $default = null) {
-        $value = parent::get($key, $default);
+        $value = $default;
 
-        if ($method = $this->hasAccessor($key)) {
-            return $this->{$method}($value);
+        // If the key already exists in the attribute list, return it immediately
+        // If an accessor has been defined, run the value through the accessor before returning
+        if ($this->has($key)) {
+            $value = parent::get($key, $default);
+
+            if ($method = $this->hasAccessor($key)) {
+                $value = $this->{$method}($value);
+            }
+        }
+
+        // If the key being accessed points to a relation, either lazy load the data or return the cached data
+        if ($this->hasRelation($key)) {
+            $value = $this->getRelation($key)->getResults();
         }
 
         return $value;
@@ -784,7 +665,7 @@ class Model extends Entity implements Listener {
      * Method that is called immediately after construction.
      */
     public function initialize() {
-        $this->loadRelationships();
+        $this->loadRelations();
     }
 
     /**
@@ -858,7 +739,7 @@ class Model extends Entity implements Listener {
      *
      * @return \Titon\Model\Model
      */
-    public function loadRelationships() {
+    public function loadRelations() {
         foreach ([
             Relation::MANY_TO_ONE => $this->belongsTo,
             Relation::MANY_TO_MANY => $this->belongsToMany,
@@ -972,7 +853,7 @@ class Model extends Entity implements Listener {
         return [
             'db.preSave' => 'preSave',
             'db.postSave' => [
-                ['method' => 'upsertRelations', 'priority' => 1], // Relations must be saved before anything else can happen
+                ['method' => 'saveRelations', 'priority' => 1], // Relations must be saved before anything else can happen
                 ['method' => 'postSave', 'priority' => 2]
             ],
             'db.preDelete' => 'preDelete',
@@ -1030,6 +911,65 @@ class Model extends Entity implements Listener {
         }
 
         return $id;
+    }
+
+    /**
+     * Either update or insert related data for the primary model.
+     * Each relation will handle upserting differently depending on type.
+     *
+     * This method should not be called directly.
+     *
+     * @param \Titon\Event\Event $event
+     * @param int $id
+     * @param string $type
+     * @throws \Titon\Model\Exception\RelationQueryFailureException
+     */
+    public function saveRelations(Event $event, $id, $type) {
+        if ($type === Query::MULTI_INSERT) {
+            return;
+        }
+
+        foreach ($this->getLinks() as $alias => $links) {
+            $relation = $this->getRelation($alias);
+
+            switch ($relation->getType()) {
+                // Append the foreign key with the current ID
+                case Relation::ONE_TO_ONE:
+                    $links->set($relation->getRelatedForeignKey(), $id);
+
+                    if (!$links->save(['validate' => false, 'atomic' => false])) {
+                        throw new RelationQueryFailureException(sprintf('Failed to save %s related record', $alias));
+                    }
+                break;
+
+                // Loop through and append the foreign key with the current ID
+                case Relation::ONE_TO_MANY:
+                    /** @type \Titon\Model\Model[] $links */
+                    foreach ($links as $link) {
+                        $link->set($relation->getRelatedForeignKey(), $id);
+
+                        if (!$link->save(['validate' => false, 'atomic' => false])) {
+                            throw new RelationQueryFailureException(sprintf('Failed to save %s related records', $alias));
+                        }
+                    }
+                break;
+
+                // Loop through each set of data and upsert to gather an ID
+                // Use that foreign ID with the current ID and save in the junction table
+                case Relation::MANY_TO_MANY:
+                    // @todo
+                break;
+
+                // Do not save belongs to relations
+                // We simply inherit the foreign key value during `link()`
+                case Relation::MANY_TO_ONE:
+                    continue;
+                break;
+            }
+        }
+
+        // Reset the links
+        $this->_links = [];
     }
 
     /**
@@ -1104,58 +1044,6 @@ class Model extends Entity implements Listener {
         }
 
         return $this;
-    }
-
-    /**
-     * Either update or insert related data for the primary model.
-     * Each relation will handle upserting differently depending on type.
-     *
-     * This method should not be called directly.
-     *
-     * @param \Titon\Event\Event $event
-     * @param int $id
-     * @param string $type
-     */
-    public function upsertRelations(Event $event, $id, $type) {
-        if ($type === Query::MULTI_INSERT) {
-            return;
-        }
-
-        foreach ($this->getLinks() as $alias => $links) {
-            $relation = $this->getRelation($alias);
-
-            switch ($relation->getType()) {
-                // Append the foreign key with the current ID
-                case Relation::ONE_TO_ONE:
-                    $links->set($relation->getRelatedForeignKey(), $id);
-                    $links->save(['atomic' => false]);
-                break;
-
-                // Loop through and append the foreign key with the current ID
-                case Relation::ONE_TO_MANY:
-                    /** @type \Titon\Model\Model[] $links */
-                    foreach ($links as $link) {
-                        $link->set($relation->getRelatedForeignKey(), $id);
-                        $link->save(['atomic' => false]);
-                    }
-                break;
-
-                // Loop through each set of data and upsert to gather an ID
-                // Use that foreign ID with the current ID and save in the junction table
-                case Relation::MANY_TO_MANY:
-                    // @todo
-                break;
-
-                // Do not save belongs to relations
-                // We simply inherit the foreign key value during `link()`
-                case Relation::MANY_TO_ONE:
-                    continue;
-                break;
-            }
-        }
-
-        // Reset the links
-        $this->_links = [];
     }
 
     /**
