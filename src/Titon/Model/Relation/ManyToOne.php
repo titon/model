@@ -27,6 +27,24 @@ class ManyToOne extends AbstractRelation {
     /**
      * {@inheritdoc}
      */
+    public function getResults() {
+        if ($this->_results) {
+            return $this->_results;
+        }
+
+        $foreignKey = $this->getPrimaryModel()->get($this->getPrimaryForeignKey());
+
+        if (!$foreignKey) {
+            return null;
+        }
+
+        return $this->_results = $this->getRelatedModel()->getRepository()
+            ->read($foreignKey, [], $this->getConditions());
+    }
+
+    /**
+     * {@inheritdoc}
+     */
     public function getType() {
         return self::MANY_TO_ONE;
     }

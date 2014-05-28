@@ -21,7 +21,29 @@ class OneToOne extends AbstractRelation {
      * {@inheritdoc}
      */
     public function getRelatedForeignKey() {
-        return $this->detectForeignKey('relatedForeignKey', $this->getPrimaryClass());;
+        return $this->detectForeignKey('relatedForeignKey', $this->getPrimaryClass());
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getResults() {
+        if ($this->_results) {
+            return $this->_results;
+        }
+
+        $model = $this->getPrimaryModel();
+        $foreignKey = $model->get($model->getPrimaryKey());
+
+        if (!$foreignKey) {
+            return null;
+        }
+
+        return $this->_results = $this->getRelatedModel()->getRepository()
+            ->select()
+            ->where($this->getRelatedForeignKey(), $foreignKey)
+            ->bindCallback($this->getConditions())
+            ->first();
     }
 
     /**

@@ -14,6 +14,7 @@ use Titon\Db\Entity;
 use Titon\Db\Finder;
 use Titon\Db\Query;
 use Titon\Db\Repository;
+use Titon\Db\RepositoryAware;
 use Titon\Event\Event;
 use Titon\Event\Listener;
 use Titon\Event\Traits\Emittable;
@@ -41,7 +42,7 @@ use \Closure;
  * @package Titon\Model
  */
 class Model extends Entity implements Listener {
-    use Emittable, Instanceable;
+    use Emittable, Instanceable, RepositoryAware;
 
     /**
      * Mapping of many-to-one relations.

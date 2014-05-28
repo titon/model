@@ -64,6 +64,13 @@ abstract class AbstractRelation extends Base implements Relation {
     protected $_relatedModel;
 
     /**
+     * Cached query result for `getResults()`.
+     *
+     * @type \Titon\Db\Entity|\Titon\Db\EntityCollection
+     */
+    protected $_results;
+
+    /**
      * Store the alias and class name.
      *
      * @param string $alias

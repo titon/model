@@ -27,6 +27,28 @@ class OneToMany extends AbstractRelation {
     /**
      * {@inheritdoc}
      */
+    public function getResults() {
+        if ($this->_results) {
+            return $this->_results;
+        }
+
+        $model = $this->getPrimaryModel();
+        $foreignKey = $model->get($model->getPrimaryKey());
+
+        if (!$foreignKey) {
+            return null;
+        }
+
+        return $this->_results = $this->getRelatedModel()->getRepository()
+            ->select()
+            ->where($this->getRelatedForeignKey(), $foreignKey)
+            ->bindCallback($this->getConditions())
+            ->all();
+    }
+
+    /**
+     * {@inheritdoc}
+     */
     public function getType() {
         return self::ONE_TO_MANY;
     }
