@@ -7,6 +7,9 @@
 
 namespace Titon\Model\Relation;
 
+use Titon\Model\Exception\RelationQueryFailureException;
+use Titon\Model\Relation;
+
 /**
  * Represents a one-to-many table relationship.
  * Also known as a has many.
@@ -15,7 +18,7 @@ namespace Titon\Model\Relation;
  *
  * @package Titon\Model\Relation
  */
-class OneToMany extends AbstractRelation {
+class OneToMany extends Relation {
 
     /**
      * {@inheritdoc}
@@ -32,16 +35,15 @@ class OneToMany extends AbstractRelation {
             return $this->_results;
         }
 
-        $model = $this->getPrimaryModel();
-        $foreignKey = $model->get($model->getPrimaryKey());
+        $id = $this->getPrimaryModel()->id();
 
-        if (!$foreignKey) {
+        if (!$id) {
             return null;
         }
 
         return $this->_results = $this->getRelatedModel()->getRepository()
             ->select()
-            ->where($this->getRelatedForeignKey(), $foreignKey)
+            ->where($this->getRelatedForeignKey(), $id)
             ->bindCallback($this->getConditions())
             ->all();
     }
@@ -51,6 +53,25 @@ class OneToMany extends AbstractRelation {
      */
     public function getType() {
         return self::ONE_TO_MANY;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function saveLinked() {
+        $id = $this->getPrimaryModel()->id();
+
+        foreach ($this->getLinked() as $link) {
+            $link->set($this->getRelatedForeignKey(), $id);
+
+            if (!$link->save(['validate' => false, 'atomic' => false])) {
+                throw new RelationQueryFailureException(sprintf('Failed to save %s related record(s)', $this->getAlias()));
+            }
+        }
+
+        $this->_links = [];
+
+        return $this;
     }
 
 }

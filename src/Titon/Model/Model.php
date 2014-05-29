@@ -28,6 +28,7 @@ use Titon\Model\Relation\OneToMany;
 use Titon\Model\Relation\OneToOne;
 use Titon\Utility\Inflector;
 use Titon\Utility\Validator;
+use \Exception;
 use \Closure;
 
 /**
@@ -165,14 +166,6 @@ class Model extends Entity implements Listener {
     protected $_exists = false;
 
     /**
-     * External models that have been linked as relationship data.
-     * These links will be saved to the database alongside the current model.
-     *
-     * @type \Titon\Model\Model[]
-     */
-    protected $_links = [];
-
-    /**
      * Model to model relationships, the "ORM".
      *
      * @type \Titon\Model\Relation[]
@@ -306,7 +299,11 @@ class Model extends Entity implements Listener {
 
         // Wrap in a transaction if atomic
         if ($options['atomic']) {
-            $count = $this->getRepository()->getDriver()->transaction($operation);
+            try {
+                $count = $this->getRepository()->getDriver()->transaction($operation);
+            } catch (Exception $e) {
+                return 0;
+            }
         } else {
             $count = call_user_func($operation);
         }
@@ -450,15 +447,6 @@ class Model extends Entity implements Listener {
      */
     public function getErrors() {
         return $this->_errors;
-    }
-
-    /**
-     * Return all linked models.
-     *
-     * @return \Titon\Model\Model[]
-     */
-    public function getLinks() {
-        return $this->_links;
     }
 
     /**
@@ -663,6 +651,15 @@ class Model extends Entity implements Listener {
     }
 
     /**
+     * Return the value of the ID (primary key) attribute.
+     *
+     * @return string
+     */
+    public function id() {
+        return $this->get($this->primaryKey);
+    }
+
+    /**
      * Method that is called immediately after construction.
      */
     public function initialize() {
@@ -712,24 +709,19 @@ class Model extends Entity implements Listener {
             throw new MissingRelationException(sprintf('No relation found for %s', $class));
         }
 
-        $alias = $this->_aliases[$class];
-        $relation = $this->getRelation($alias);
+        $this->getRelation($this->_aliases[$class])->link($model);
 
-        switch ($relation->getType()) {
-            case Relation::MANY_TO_ONE:
-                $this->_links[$alias] = $model;
+        return $this;
+    }
 
-                // Include the foreign key in the current data
-                $this->set($relation->getPrimaryForeignKey(), $model->get($model->getPrimaryKey()));
-            break;
-
-            case Relation::ONE_TO_ONE:
-                $this->_links[$alias] = $model;
-            break;
-
-            default:
-                $this->_links[$alias][] = $model;
-            break;
+    /**
+     * Link multiple models at once.
+     *
+     * @return $this
+     */
+    public function linkMany() {
+        foreach (func_get_args() as $model) {
+            $this->link($model);
         }
 
         return $this;
@@ -906,7 +898,11 @@ class Model extends Entity implements Listener {
 
         // Wrap in a transaction if atomic
         if ($options['atomic']) {
-            $id = $this->getRepository()->getDriver()->transaction($operation);
+            try {
+                $id = $this->getRepository()->getDriver()->transaction($operation);
+            } catch (Exception $e) {
+                return 0;
+            }
         } else {
             $id = call_user_func($operation);
         }
@@ -930,47 +926,13 @@ class Model extends Entity implements Listener {
             return;
         }
 
-        foreach ($this->getLinks() as $alias => $links) {
-            $relation = $this->getRelation($alias);
+        // Set the ID so it's available in the relations
+        $this->set($this->primaryKey, $id);
 
-            switch ($relation->getType()) {
-                // Append the foreign key with the current ID
-                case Relation::ONE_TO_ONE:
-                    $links->set($relation->getRelatedForeignKey(), $id);
-
-                    if (!$links->save(['validate' => false, 'atomic' => false])) {
-                        throw new RelationQueryFailureException(sprintf('Failed to save %s related record', $alias));
-                    }
-                break;
-
-                // Loop through and append the foreign key with the current ID
-                case Relation::ONE_TO_MANY:
-                    /** @type \Titon\Model\Model[] $links */
-                    foreach ($links as $link) {
-                        $link->set($relation->getRelatedForeignKey(), $id);
-
-                        if (!$link->save(['validate' => false, 'atomic' => false])) {
-                            throw new RelationQueryFailureException(sprintf('Failed to save %s related records', $alias));
-                        }
-                    }
-                break;
-
-                // Loop through each set of data and upsert to gather an ID
-                // Use that foreign ID with the current ID and save in the junction table
-                case Relation::MANY_TO_MANY:
-                    // @todo
-                break;
-
-                // Do not save belongs to relations
-                // We simply inherit the foreign key value during `link()`
-                case Relation::MANY_TO_ONE:
-                    continue;
-                break;
-            }
+        // Save all linked models
+        foreach ($this->getRelations() as $relation) {
+            $relation->saveLinked();
         }
-
-        // Reset the links
-        $this->_links = [];
     }
 
     /**
@@ -1023,25 +985,19 @@ class Model extends Entity implements Listener {
             throw new MissingRelationException(sprintf('No relation found for %s', $class));
         }
 
-        $alias = $this->_aliases[$class];
-        $relation = $this->getRelation($alias);
+        $this->getRelation($this->_aliases[$class])->unlink($model);
 
-        switch ($relation->getType()) {
-            case Relation::MANY_TO_ONE:
-            case Relation::ONE_TO_ONE:
-                if ($this->_links[$alias] === $model) {
-                    unset($this->_links[$alias]);
-                }
-            break;
+        return $this;
+    }
 
-            default:
-                foreach ($this->_links[$alias] as $i => $link) {
-                    if ($link === $model) {
-                        unset($this->_links[$alias][$i]);
-                        break;
-                    }
-                }
-            break;
+    /**
+     * Unlink multiple models at once.
+     *
+     * @return $this
+     */
+    public function unlinkMany() {
+        foreach (func_get_args() as $model) {
+            $this->unlink($model);
         }
 
         return $this;

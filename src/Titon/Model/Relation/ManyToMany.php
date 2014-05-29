@@ -8,6 +8,7 @@
 namespace Titon\Model\Relation;
 
 use Titon\Db\Repository;
+use Titon\Model\Exception\RelationQueryFailureException;
 use Titon\Model\Relation;
 
 /**
@@ -18,7 +19,7 @@ use Titon\Model\Relation;
  *
  * @package Titon\Model\Relation
  */
-class ManyToMany extends AbstractRelation {
+class ManyToMany extends Relation {
 
     /**
      * Configuration.
@@ -84,17 +85,16 @@ class ManyToMany extends AbstractRelation {
             return $this->_results;
         }
 
-        $model = $this->getPrimaryModel();
-        $foreignKey = $model->get($model->getPrimaryKey());
+        $id = $this->getPrimaryModel()->id();
 
-        if (!$foreignKey) {
+        if (!$id) {
             return null;
         }
 
         // Get junction records first
         $junctionResults = $this->getJunctionRepository()
             ->select()
-            ->where($this->getPrimaryForeignKey(), $foreignKey)
+            ->where($this->getPrimaryForeignKey(), $id)
             ->all();
 
         if ($junctionResults->isEmpty()) {
@@ -114,9 +114,9 @@ class ManyToMany extends AbstractRelation {
         }
 
         // Merge the junction records into the main results
-        /** @type \Titon\Db\Entity $result */
+        /** @type \Titon\Model\Model $result */
         foreach ($results as $result) {
-            $result->set('junction', $junctionResults->find($result->get($relatedModel->getPrimaryKey()), $this->getRelatedForeignKey()));
+            $result->set('junction', $junctionResults->find($result->id(), $this->getRelatedForeignKey()));
         }
 
         return $this->_results = $results;
@@ -136,6 +136,43 @@ class ManyToMany extends AbstractRelation {
      */
     public function isDependent() {
         return true;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function saveLinked() {
+        $id = $this->getPrimaryModel()->id();
+        $pfk = $this->getPrimaryForeignKey();
+        $rfk = $this->getRelatedForeignKey();
+        $junction = $this->getJunctionRepository();
+
+        foreach ($this->getLinked() as $link) {
+
+            // Save the related model in case the data has changed
+            if (!$link->save(['validate' => false, 'atomic' => false])) {
+                throw new RelationQueryFailureException(sprintf('Failed to save %s related record(s)', $this->getAlias()));
+            }
+
+            // Check if the junction record exists
+            $exists = $junction->select()
+                ->where($pfk, $id)
+                ->where($rfk, $link->id())
+                ->count();
+
+            if ($exists) {
+                continue;
+            }
+
+            // Save a new junction record
+            if (!$junction->create([$pfk => $id, $rfk => $link->id()])) {
+                throw new RelationQueryFailureException(sprintf('Failed to save %s junction record(s)', $this->getAlias()));
+            }
+        }
+
+        $this->_links = [];
+
+        return $this;
     }
 
     /**

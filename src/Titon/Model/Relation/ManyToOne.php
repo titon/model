@@ -7,6 +7,9 @@
 
 namespace Titon\Model\Relation;
 
+use Titon\Model\Model;
+use Titon\Model\Relation;
+
 /**
  * Represents a many-to-one table relationship.
  * Also known as a belongs to.
@@ -15,7 +18,7 @@ namespace Titon\Model\Relation;
  *
  * @package Titon\Model\Relation
  */
-class ManyToOne extends AbstractRelation {
+class ManyToOne extends Relation {
 
     /**
      * {@inheritdoc}
@@ -56,6 +59,32 @@ class ManyToOne extends AbstractRelation {
      */
     public function isDependent() {
         return false;
+    }
+
+    /**
+     * Only one record at a time can be linked in a belongs to relation.
+     * Also include the ID from the foreign model as an attribute on the primary model.
+     *
+     * @param \Titon\Model\Model $model
+     * @return $this
+     */
+    public function link(Model $model) {
+        $this->_links = [$model];
+
+        $this->getPrimaryModel()->set($this->getPrimaryForeignKey(), $model->id());
+
+        return $this;
+    }
+
+    /**
+     * Belongs to should not be saved when the child is saved.
+     *
+     * @return $this
+     */
+    public function saveLinked() {
+        $this->_links = [];
+
+        return $this;
     }
 
 }
