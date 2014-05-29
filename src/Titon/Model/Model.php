@@ -286,7 +286,7 @@ class Model extends Entity implements Listener {
 
         $model = $this;
         $operation = function() use ($model, $id, $options) {
-            if ($count = $this->getRepository()->delete($id, $options)) {
+            if ($count = $model->getRepository()->delete($id, $options)) {
                 $model->_data = [];
                 $model->_exists = false;
                 $model->_cascade = true;
@@ -325,39 +325,13 @@ class Model extends Entity implements Listener {
             return;
         }
 
-        foreach ($this->getRelations() as $alias => $relation) {
-            if (!$relation->isDependent()) {
-                continue;
-            }
+        // Set the ID so it's available in the relations
+        $this->set($this->primaryKey, $id);
 
-            $result = null;
-
-            switch ($relation->getType()) {
-
-                // Delete related records where the foreign key in the related table matches the current model
-                case Relation::ONE_TO_ONE:
-                case Relation::ONE_TO_MANY:
-                    $result = $relation->getRelatedModel()->getRepository()->deleteMany(function(Query $query) use ($relation, $id) {
-                        $query->where($relation->getRelatedForeignKey(), $id);
-                    });
-                break;
-
-                // Delete records where the foreign key in the junction table matches the current model
-                case Relation::MANY_TO_MANY:
-                    /** @type \Titon\Model\Relation\ManyToMany $relation */
-                    $result = $relation->getJunctionRepository()->deleteMany(function(Query $query) use ($relation, $id) {
-                        $query->where($relation->getPrimaryForeignKey(), $id);
-                    });
-                break;
-
-                // Parent records cannot be deleted via cascade
-                case Relation::MANY_TO_ONE:
-                    continue;
-                break;
-            }
-
-            if (!$result) {
-                throw new RelationQueryFailureException(sprintf('Failed to delete %s related record(s)', $alias));
+        // Delete dependents
+        foreach ($this->getRelations() as $relation) {
+            if ($relation->isDependent()) {
+                $relation->deleteDependents();
             }
         }
     }

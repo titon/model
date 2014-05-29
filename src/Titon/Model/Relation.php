@@ -110,6 +110,14 @@ abstract class Relation extends Base {
     }
 
     /**
+     * Delete all related records that are dependent on the primary record.
+     * Return a count of the number of records deleted.
+     *
+     * @return int
+     */
+    abstract public function deleteDependents();
+
+    /**
      * Return a foreign key either for the primary or related model.
      * If no foreign key is defined, automatically inflect one and set it.
      *

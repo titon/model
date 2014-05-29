@@ -7,6 +7,7 @@
 
 namespace Titon\Model\Relation;
 
+use Titon\Db\Query;
 use Titon\Db\Repository;
 use Titon\Model\Exception\RelationQueryFailureException;
 use Titon\Model\Relation;
@@ -38,6 +39,24 @@ class ManyToMany extends Relation {
      * @type \Titon\Db\Repository
      */
     protected $_junction;
+
+    /**
+     * Delete all records in the junction table.
+     *
+     * @return int
+     */
+    public function deleteDependents() {
+        $id = $this->getPrimaryModel()->id();
+        $pfk = $this->getPrimaryForeignKey();
+
+        if (!$id) {
+            return 0;
+        }
+
+        return $this->getJunctionRepository()->deleteMany(function(Query $query) use ($pfk, $id) {
+            $query->where($pfk, $id);
+        });
+    }
 
     /**
      * Return the junction table name.

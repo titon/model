@@ -7,6 +7,7 @@
 
 namespace Titon\Model\Relation;
 
+use Titon\Db\Query;
 use Titon\Model\Exception\RelationQueryFailureException;
 use Titon\Model\Relation;
 
@@ -19,6 +20,23 @@ use Titon\Model\Relation;
  * @package Titon\Model\Relation
  */
 class OneToMany extends Relation {
+
+    /**
+     * {@inheritdoc}
+     */
+    public function deleteDependents() {
+        $id = $this->getPrimaryModel()->id();
+        $rfk = $this->getRelatedForeignKey();
+
+        if (!$id || !$this->isDependent()) {
+            return 0;
+        }
+
+        // TODO - test nested dependents are deleted when using deleteMany()
+        return $this->getRelatedModel()->deleteMany(function(Query $query) use ($rfk, $id) {
+            $query->where($rfk, $id);
+        });
+    }
 
     /**
      * {@inheritdoc}

@@ -25,12 +25,29 @@ class OneToOne extends Relation {
     /**
      * {@inheritdoc}
      */
+    public function deleteDependents() {
+        if (!$this->isDependent()) {
+            return 0;
+        }
+
+        if ($model = $this->getResults()) {
+            return $model->delete();
+        }
+
+        return 0;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
     public function getRelatedForeignKey() {
         return $this->detectForeignKey('relatedForeignKey', $this->getPrimaryClass());
     }
 
     /**
      * {@inheritdoc}
+     *
+     * @return \Titon\Model\Model
      */
     public function getResults() {
         if ($this->_results) {

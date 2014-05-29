@@ -21,6 +21,15 @@ use Titon\Model\Relation;
 class ManyToOne extends Relation {
 
     /**
+     * Belongs to should not delete parent records.
+     *
+     * @return int
+     */
+    public function deleteDependents() {
+        return 0;
+    }
+
+    /**
      * {@inheritdoc}
      */
     public function getPrimaryForeignKey() {
