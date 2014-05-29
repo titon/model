@@ -17,9 +17,13 @@ class QueryBuilder {
     }
 
     public function __call($method, array $arguments) {
-        call_user_func_array([$this->getQuery(), $method], $arguments);
+        $result = call_user_func_array([$this->getQuery(), $method], $arguments);
 
-        return $this;
+        if ($result instanceof Query) {
+            return $this;
+        }
+
+        return $result;
     }
 
     public function getQuery() {
@@ -68,6 +72,8 @@ class QueryBuilder {
                 $this->getQuery()->fields([$relation->getPrimaryForeignKey()], true);
             }
         }
+
+        $relation->fetch($query);
 
         return $this;
     }

@@ -9,6 +9,7 @@ namespace Titon\Model\Relation;
 
 use Titon\Model\Model;
 use Titon\Model\Relation;
+use Titon\Utility\Hash;
 
 /**
  * Represents a many-to-one table relationship.
@@ -27,6 +28,35 @@ class ManyToOne extends Relation {
      */
     public function deleteDependents() {
         return 0;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function fetchResults(array $results) {
+        if (!$this->_fetch) {
+            return $results;
+        }
+
+        $rpk = $this->getRelatedModel()->getPrimaryKey();
+        $pfk = $this->getPrimaryForeignKey();
+        $alias = $this->getAlias();
+
+        $related = $this->getRelatedModel()
+            ->select()
+            ->where($rpk, Hash::pluck($results, $pfk))
+            ->bindCallback($this->getConditions())
+            ->all();
+
+        if ($related->isEmpty()) {
+            return $results;
+        }
+
+        foreach ($results as $i => $result) {
+            $results[$i][$alias] = $related->find($result[$rpk], $pfk);
+        }
+
+        return $results;
     }
 
     /**

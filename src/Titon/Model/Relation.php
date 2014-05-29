@@ -8,6 +8,7 @@
 namespace Titon\Model;
 
 use Titon\Common\Base;
+use Titon\Db\Query;
 use Titon\Utility\Inflector;
 use Titon\Utility\Path;
 use \Closure;
@@ -51,6 +52,8 @@ abstract class Relation extends Base {
      * @type \Closure
      */
     protected $_conditions;
+
+    protected $_fetch;
 
     /**
      * Related models that have been linked to the primary model.
@@ -136,6 +139,14 @@ abstract class Relation extends Base {
 
         return $foreignKey;
     }
+
+    public function fetch(QueryBuilder $query) {
+        $this->_fetch = $query;
+
+        return $this;
+    }
+
+    abstract public function fetchResults(array $results);
 
     /**
      * Return the relation alias name.

@@ -11,6 +11,7 @@ use Titon\Db\Query;
 use Titon\Model\Exception\RelationQueryFailureException;
 use Titon\Model\Model;
 use Titon\Model\Relation;
+use Titon\Utility\Hash;
 
 /**
  * Represents a one-to-one table relationship.
@@ -40,6 +41,35 @@ class OneToOne extends Relation {
     /**
      * {@inheritdoc}
      */
+    public function fetchResults(array $results) {
+        if (!$this->_fetch) {
+            return $results;
+        }
+
+        $ppk = $this->getPrimaryModel()->getPrimaryKey();
+        $rfk = $this->getRelatedForeignKey();
+        $alias = $this->getAlias();
+
+        $related = $this->getRelatedModel()
+            ->select()
+            ->where($rfk, Hash::pluck($results, $ppk))
+            ->bindCallback($this->getConditions())
+            ->all();
+
+        if ($related->isEmpty()) {
+            return $results;
+        }
+
+        foreach ($results as $i => $result) {
+            $results[$i][$alias] = $related->find($result[$ppk], $rfk);
+        }
+
+        return $results;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
     public function getRelatedForeignKey() {
         return $this->detectForeignKey('relatedForeignKey', $this->getPrimaryClass());
     }
@@ -60,7 +90,7 @@ class OneToOne extends Relation {
             return null;
         }
 
-        return $this->_results = $this->getRelatedModel()->getRepository()
+        return $this->_results = $this->getRelatedModel()
             ->select()
             ->where($this->getRelatedForeignKey(), $id)
             ->bindCallback($this->getConditions())

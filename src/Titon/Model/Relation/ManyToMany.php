@@ -11,6 +11,7 @@ use Titon\Db\Query;
 use Titon\Db\Repository;
 use Titon\Model\Exception\RelationQueryFailureException;
 use Titon\Model\Relation;
+use Titon\Utility\Hash;
 
 /**
  * Represents a many-to-many table relationship.
@@ -56,6 +57,62 @@ class ManyToMany extends Relation {
         return $this->getJunctionRepository()->deleteMany(function(Query $query) use ($pfk, $id) {
             $query->where($pfk, $id);
         });
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function fetchResults(array $results) {
+        if (!$this->_fetch) {
+            return $results;
+        }
+
+        $ppk = $this->getPrimaryModel()->getPrimaryKey();
+        $pfk = $this->getPrimaryForeignKey();
+        $pids = Hash::pluck($results, $ppk);
+
+        // Fetch junction records
+        $junctionResults = $this->getJunctionRepository()
+            ->select()
+            ->where($pfk, $pids)
+            ->all();
+
+        if ($junctionResults->isEmpty()) {
+            return $results;
+        }
+
+        $rpk = $this->getRelatedModel()->getPrimaryKey();
+        $rfk = $this->getRelatedForeignKey();
+        $rids = $junctionResults->pluck($rfk);
+
+        // Fetch related records
+        $related = $this->getRelatedModel()
+            ->select()
+            ->where($rpk, $rids)
+            ->bindCallback($this->getConditions())
+            ->all();
+
+        if ($related->isEmpty()) {
+            return $results;
+        }
+
+        $alias = $this->getAlias();
+
+        foreach ($results as $i => $result) {
+            $id = $result[$ppk];
+
+            // Get a list of related IDs from the junction records
+            $jids = $junctionResults->filter(function($entity) use ($pfk, $id) {
+                return ($entity[$pfk] === $id);
+            }, false)->pluck($rfk);
+
+            // TODO - merge in junction record
+            $results[$i][$alias] = $related->filter(function($entity) use ($rpk, $jids) {
+                return in_array($entity[$rpk], $jids);
+            }, false);
+        }
+
+        return $results;
     }
 
     /**

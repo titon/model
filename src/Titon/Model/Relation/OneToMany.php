@@ -10,6 +10,7 @@ namespace Titon\Model\Relation;
 use Titon\Db\Query;
 use Titon\Model\Exception\RelationQueryFailureException;
 use Titon\Model\Relation;
+use Titon\Utility\Hash;
 
 /**
  * Represents a one-to-many table relationship.
@@ -36,6 +37,39 @@ class OneToMany extends Relation {
         return $this->getRelatedModel()->deleteMany(function(Query $query) use ($rfk, $id) {
             $query->where($rfk, $id);
         });
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function fetchResults(array $results) {
+        if (!$this->_fetch) {
+            return $results;
+        }
+
+        $ppk = $this->getPrimaryModel()->getPrimaryKey();
+        $rfk = $this->getRelatedForeignKey();
+        $alias = $this->getAlias();
+
+        $related = $this->getRelatedModel()
+            ->select()
+            ->where($rfk, Hash::pluck($results, $ppk))
+            ->bindCallback($this->getConditions())
+            ->all();
+
+        if ($related->isEmpty()) {
+            return $results;
+        }
+
+        foreach ($results as $i => $result) {
+            $id = $result[$ppk];
+
+            $results[$i][$alias] = $related->filter(function($entity) use ($rfk, $id) {
+                return ($entity[$rfk] === $id);
+            }, false);
+        }
+
+        return $results;
     }
 
     /**

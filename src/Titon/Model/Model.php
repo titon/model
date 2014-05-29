@@ -345,6 +345,16 @@ class Model extends Entity implements Listener {
         return $this->_exists;
     }
 
+    public function fetchRelations(Event $event, array &$results, $finder) {
+        if ($finder !== 'list' && $finder !== 'all') {
+            return;
+        }
+
+        foreach ($this->getRelations() as $relation) {
+            $results = $relation->fetchResults($results);
+        }
+    }
+
     /**
      * Fill the model with data to be sent to the database layer.
      *
@@ -820,7 +830,7 @@ class Model extends Entity implements Listener {
         return [
             'db.preSave' => 'preSave',
             'db.postSave' => [
-                ['method' => 'saveRelations', 'priority' => 1], // Relations must be saved before anything else can happen
+                ['method' => 'saveRelations', 'priority' => 1], // Relations must be saved before anything else happens
                 ['method' => 'postSave', 'priority' => 2]
             ],
             'db.preDelete' => 'preDelete',
@@ -829,7 +839,10 @@ class Model extends Entity implements Listener {
                 ['method' => 'deleteDependents', 'priority' => 2],
             ],
             'db.preFind' => 'preFind',
-            'db.postFind' => 'postFind',
+            'db.postFind' => [
+                ['method' => 'fetchRelations', 'priority' => 1], // Relations should exist before anything else happens
+                ['method' => 'postFind', 'priority' => 2]
+            ],
             'model.preValidate' => 'preValidate',
             'model.postValidate' => 'postValidate'
         ];
