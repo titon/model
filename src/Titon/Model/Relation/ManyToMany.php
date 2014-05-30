@@ -9,6 +9,7 @@ namespace Titon\Model\Relation;
 
 use Titon\Db\Query;
 use Titon\Db\Repository;
+use Titon\Event\Event;
 use Titon\Model\Exception\RelationQueryFailureException;
 use Titon\Model\Relation;
 use Titon\Utility\Hash;
@@ -42,77 +43,17 @@ class ManyToMany extends Relation {
     protected $_junction;
 
     /**
-     * Delete all records in the junction table.
-     *
-     * @return int
-     */
-    public function deleteDependents() {
-        $id = $this->getPrimaryModel()->id();
-        $pfk = $this->getPrimaryForeignKey();
-
-        if (!$id) {
-            return 0;
-        }
-
-        return $this->getJunctionRepository()->deleteMany(function(Query $query) use ($pfk, $id) {
-            $query->where($pfk, $id);
-        });
-    }
-
-    /**
      * {@inheritdoc}
      */
-    public function fetchResults(array $results) {
-        if (!$this->_fetch) {
-            return $results;
-        }
-
-        $ppk = $this->getPrimaryModel()->getPrimaryKey();
+    public function deleteDependents(Event $event, $ids) {
         $pfk = $this->getPrimaryForeignKey();
-        $pids = Hash::pluck($results, $ppk);
+        $junction = $this->getJunctionRepository();
 
-        // Fetch junction records
-        $junctionResults = $this->getJunctionRepository()
-            ->select()
-            ->where($pfk, $pids)
-            ->all();
-
-        if ($junctionResults->isEmpty()) {
-            return $results;
+        foreach ((array) $ids as $id) {
+            $junction->deleteMany(function(Query $query) use ($pfk, $id) {
+                $query->where($pfk, $id);
+            });
         }
-
-        $rpk = $this->getRelatedModel()->getPrimaryKey();
-        $rfk = $this->getRelatedForeignKey();
-        $rids = $junctionResults->pluck($rfk);
-
-        // Fetch related records
-        $related = $this->getRelatedModel()
-            ->select()
-            ->where($rpk, $rids)
-            ->bindCallback($this->getConditions())
-            ->all();
-
-        if ($related->isEmpty()) {
-            return $results;
-        }
-
-        $alias = $this->getAlias();
-
-        foreach ($results as $i => $result) {
-            $id = $result[$ppk];
-
-            // Get a list of related IDs from the junction records
-            $jids = $junctionResults->filter(function($entity) use ($pfk, $id) {
-                return ($entity[$pfk] === $id);
-            }, false)->pluck($rfk);
-
-            // TODO - merge in junction record
-            $results[$i][$alias] = $related->filter(function($entity) use ($rpk, $jids) {
-                return in_array($entity[$rpk], $jids);
-            }, false);
-        }
-
-        return $results;
     }
 
     /**
@@ -206,49 +147,101 @@ class ManyToMany extends Relation {
     }
 
     /**
-     * Junction records should always be deleted.
-     *
-     * @return bool
+     * {@inheritdoc}
      */
-    public function isDependent() {
-        return true;
+    public function loadRelations(Event $event, array &$results, $finder) {
+        $query = $this->getEagerQuery();
+
+        if (!$query) {
+            return;
+        }
+
+        $this->_eagerQuery = null;
+
+        $ppk = $this->getPrimaryModel()->getPrimaryKey();
+        $pfk = $this->getPrimaryForeignKey();
+        $pids = Hash::pluck($results, $ppk);
+
+        // Fetch junction records
+        $junctionResults = $this->getJunctionRepository()
+            ->select()
+            ->where($pfk, $pids)
+            ->all();
+
+        if ($junctionResults->isEmpty()) {
+            return;
+        }
+
+        $rpk = $this->getRelatedModel()->getPrimaryKey();
+        $rfk = $this->getRelatedForeignKey();
+        $rids = $junctionResults->pluck($rfk);
+
+        // Fetch related records
+        $related = $query
+            ->where($rpk, $rids)
+            ->bindCallback($this->getConditions())
+            ->all();
+
+        if ($related->isEmpty()) {
+            return;
+        }
+
+        $alias = $this->getAlias();
+
+        foreach ($results as $i => $result) {
+            $id = $result[$ppk];
+
+            // Get a list of related IDs from the junction records
+            $jids = $junctionResults->filter(function($entity) use ($pfk, $id) {
+                return ($entity[$pfk] === $id);
+            }, false)->pluck($rfk);
+
+            // TODO - merge in junction record
+            $results[$i][$alias] = $related->filter(function($entity) use ($rpk, $jids) {
+                return in_array($entity[$rpk], $jids);
+            }, false);
+        }
     }
 
     /**
      * {@inheritdoc}
      */
-    public function saveLinked() {
-        $id = $this->getPrimaryModel()->id();
+    public function saveLinked(Event $event, $ids, $type) {
+        if ($type === Query::MULTI_INSERT) {
+            return;
+        }
+
         $pfk = $this->getPrimaryForeignKey();
         $rfk = $this->getRelatedForeignKey();
         $junction = $this->getJunctionRepository();
+        $links = $this->getLinked();
 
-        foreach ($this->getLinked() as $link) {
+        foreach ((array) $ids as $id) {
+            foreach ($links as $link) {
 
-            // Save the related model in case the data has changed
-            if (!$link->save(['validate' => false, 'atomic' => false])) {
-                throw new RelationQueryFailureException(sprintf('Failed to save %s related record(s)', $this->getAlias()));
-            }
+                // Save the related model in case the data has changed
+                if (!$link->save(['validate' => false, 'atomic' => false])) {
+                    throw new RelationQueryFailureException(sprintf('Failed to save %s related record(s)', $this->getAlias()));
+                }
 
-            // Check if the junction record exists
-            $exists = $junction->select()
-                ->where($pfk, $id)
-                ->where($rfk, $link->id())
-                ->count();
+                // Check if the junction record exists
+                $exists = $junction->select()
+                    ->where($pfk, $id)
+                    ->where($rfk, $link->id())
+                    ->count();
 
-            if ($exists) {
-                continue;
-            }
+                if ($exists) {
+                    continue;
+                }
 
-            // Save a new junction record
-            if (!$junction->create([$pfk => $id, $rfk => $link->id()])) {
-                throw new RelationQueryFailureException(sprintf('Failed to save %s junction record(s)', $this->getAlias()));
+                // Save a new junction record
+                if (!$junction->create([$pfk => $id, $rfk => $link->id()])) {
+                    throw new RelationQueryFailureException(sprintf('Failed to save %s junction record(s)', $this->getAlias()));
+                }
             }
         }
 
         $this->_links = [];
-
-        return $this;
     }
 
     /**

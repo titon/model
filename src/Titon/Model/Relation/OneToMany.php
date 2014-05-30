@@ -8,6 +8,7 @@
 namespace Titon\Model\Relation;
 
 use Titon\Db\Query;
+use Titon\Event\Event;
 use Titon\Model\Exception\RelationQueryFailureException;
 use Titon\Model\Relation;
 use Titon\Utility\Hash;
@@ -23,53 +24,13 @@ use Titon\Utility\Hash;
 class OneToMany extends Relation {
 
     /**
+     * Child records should not be deleted.
+     * Use database level `ON DELETE CASCADE` for cascading deletion.
+     *
      * {@inheritdoc}
      */
-    public function deleteDependents() {
-        $id = $this->getPrimaryModel()->id();
-        $rfk = $this->getRelatedForeignKey();
-
-        if (!$id || !$this->isDependent()) {
-            return 0;
-        }
-
-        // TODO - test nested dependents are deleted when using deleteMany()
-        return $this->getRelatedModel()->deleteMany(function(Query $query) use ($rfk, $id) {
-            $query->where($rfk, $id);
-        });
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function fetchResults(array $results) {
-        if (!$this->_fetch) {
-            return $results;
-        }
-
-        $ppk = $this->getPrimaryModel()->getPrimaryKey();
-        $rfk = $this->getRelatedForeignKey();
-        $alias = $this->getAlias();
-
-        $related = $this->getRelatedModel()
-            ->select()
-            ->where($rfk, Hash::pluck($results, $ppk))
-            ->bindCallback($this->getConditions())
-            ->all();
-
-        if ($related->isEmpty()) {
-            return $results;
-        }
-
-        foreach ($results as $i => $result) {
-            $id = $result[$ppk];
-
-            $results[$i][$alias] = $related->filter(function($entity) use ($rfk, $id) {
-                return ($entity[$rfk] === $id);
-            }, false);
-        }
-
-        return $results;
+    public function deleteDependents(Event $event, $ids) {
+        return;
     }
 
     /**
@@ -110,20 +71,59 @@ class OneToMany extends Relation {
     /**
      * {@inheritdoc}
      */
-    public function saveLinked() {
-        $id = $this->getPrimaryModel()->id();
+    public function loadRelations(Event $event, array &$results, $finder) {
+        $query = $this->getEagerQuery();
 
-        foreach ($this->getLinked() as $link) {
-            $link->set($this->getRelatedForeignKey(), $id);
+        if (!$query) {
+            return;
+        }
 
-            if (!$link->save(['validate' => false, 'atomic' => false])) {
-                throw new RelationQueryFailureException(sprintf('Failed to save %s related record(s)', $this->getAlias()));
+        $this->_eagerQuery = null;
+
+        $ppk = $this->getPrimaryModel()->getPrimaryKey();
+        $rfk = $this->getRelatedForeignKey();
+        $alias = $this->getAlias();
+
+        $related = $query
+            ->where($rfk, Hash::pluck($results, $ppk))
+            ->bindCallback($this->getConditions())
+            ->all();
+
+        if ($related->isEmpty()) {
+            return;
+        }
+
+        foreach ($results as $i => $result) {
+            $id = $result[$ppk];
+
+            $results[$i][$alias] = $related->filter(function($entity) use ($rfk, $id) {
+                return ($entity[$rfk] === $id);
+            }, false);
+        }
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function saveLinked(Event $event, $ids, $type) {
+        if ($type === Query::MULTI_INSERT) {
+            return;
+        }
+
+        $rfk = $this->getRelatedForeignKey();
+        $links = $this->getLinked();
+
+        foreach ((array) $ids as $id) {
+            foreach ($links as $link) {
+                $link->set($rfk, $id);
+
+                if (!$link->save(['validate' => false, 'atomic' => false])) {
+                    throw new RelationQueryFailureException(sprintf('Failed to save %s related record(s)', $this->getAlias()));
+                }
             }
         }
 
         $this->_links = [];
-
-        return $this;
     }
 
 }

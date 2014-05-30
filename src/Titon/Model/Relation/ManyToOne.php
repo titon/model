@@ -7,6 +7,7 @@
 
 namespace Titon\Model\Relation;
 
+use Titon\Event\Event;
 use Titon\Model\Model;
 use Titon\Model\Relation;
 use Titon\Utility\Hash;
@@ -22,41 +23,12 @@ use Titon\Utility\Hash;
 class ManyToOne extends Relation {
 
     /**
-     * Belongs to should not delete parent records.
+     * Parent belongs to relations should not be deleted when children are.
      *
-     * @return int
-     */
-    public function deleteDependents() {
-        return 0;
-    }
-
-    /**
      * {@inheritdoc}
      */
-    public function fetchResults(array $results) {
-        if (!$this->_fetch) {
-            return $results;
-        }
-
-        $rpk = $this->getRelatedModel()->getPrimaryKey();
-        $pfk = $this->getPrimaryForeignKey();
-        $alias = $this->getAlias();
-
-        $related = $this->getRelatedModel()
-            ->select()
-            ->where($rpk, Hash::pluck($results, $pfk))
-            ->bindCallback($this->getConditions())
-            ->all();
-
-        if ($related->isEmpty()) {
-            return $results;
-        }
-
-        foreach ($results as $i => $result) {
-            $results[$i][$alias] = $related->find($result[$rpk], $pfk);
-        }
-
-        return $results;
+    public function deleteDependents(Event $event, $ids) {
+        return;
     }
 
     /**
@@ -92,15 +64,6 @@ class ManyToOne extends Relation {
     }
 
     /**
-     * Belongs to should not delete parent records.
-     *
-     * @return bool
-     */
-    public function isDependent() {
-        return false;
-    }
-
-    /**
      * Only one record at a time can be linked in a belongs to relation.
      * Also include the ID from the foreign model as an attribute on the primary model.
      *
@@ -116,14 +79,42 @@ class ManyToOne extends Relation {
     }
 
     /**
+     * {@inheritdoc}
+     */
+    public function loadRelations(Event $event, array &$results, $finder) {
+        $query = $this->getEagerQuery();
+
+        if (!$query) {
+            return;
+        }
+
+        $this->_eagerQuery = null;
+
+        $rpk = $this->getRelatedModel()->getPrimaryKey();
+        $pfk = $this->getPrimaryForeignKey();
+        $alias = $this->getAlias();
+
+        $related = $query
+            ->where($rpk, Hash::pluck($results, $pfk))
+            ->bindCallback($this->getConditions())
+            ->all();
+
+        if ($related->isEmpty()) {
+            return;
+        }
+
+        foreach ($results as $i => $result) {
+            $results[$i][$alias] = $related->find($result[$pfk], $rpk);
+        }
+    }
+
+    /**
      * Belongs to should not be saved when the child is saved.
      *
-     * @return $this
+     * {@inheritdoc}
      */
-    public function saveLinked() {
+    public function saveLinked(Event $event, $ids, $type) {
         $this->_links = [];
-
-        return $this;
     }
 
 }

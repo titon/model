@@ -9,6 +9,8 @@ namespace Titon\Model;
 
 use Titon\Common\Base;
 use Titon\Db\Query;
+use Titon\Event\Event;
+use Titon\Event\Listener;
 use Titon\Utility\Inflector;
 use Titon\Utility\Path;
 use \Closure;
@@ -18,7 +20,7 @@ use \Closure;
  *
  * @package Titon\Model
  */
-abstract class Relation extends Base {
+abstract class Relation extends Base implements Listener {
 
     const ONE_TO_ONE = 'oneToOne'; // Has one
     const ONE_TO_MANY = 'oneToMany'; // Has many
@@ -34,7 +36,6 @@ abstract class Relation extends Base {
      *      @type string $relatedClass      Fully qualified class name for the related model
      *      @type string $foreignKey        Name of the foreign key in the current model
      *      @type string $relatedForeignKey Name of the foreign key in the related model
-     *      @type bool $dependent           Is the relation dependent on the parent
      * }
      */
     protected $_config = [
@@ -42,8 +43,7 @@ abstract class Relation extends Base {
         'class' => '',
         'relatedClass' => '',
         'foreignKey' => '',
-        'relatedForeignKey' => '',
-        'dependent' => true
+        'relatedForeignKey' => ''
     ];
 
     /**
@@ -53,7 +53,12 @@ abstract class Relation extends Base {
      */
     protected $_conditions;
 
-    protected $_fetch;
+    /**
+     * A query to eager load related records.
+     *
+     * @type \Titon\Model\QueryBuilder
+     */
+    protected $_eagerQuery;
 
     /**
      * Related models that have been linked to the primary model.
@@ -114,11 +119,13 @@ abstract class Relation extends Base {
 
     /**
      * Delete all related records that are dependent on the primary record.
-     * Return a count of the number of records deleted.
      *
-     * @return int
+     * This method is called through a `db.postDelete` event and should not be called directly.
+     *
+     * @param \Titon\Event\Event $event
+     * @param int|int[] $id
      */
-    abstract public function deleteDependents();
+    abstract public function deleteDependents(Event $event, $id);
 
     /**
      * Return a foreign key either for the primary or related model.
@@ -140,13 +147,17 @@ abstract class Relation extends Base {
         return $foreignKey;
     }
 
-    public function fetch(QueryBuilder $query) {
-        $this->_fetch = $query;
+    /**
+     * Eager load a set of related records by passing in a query to later execute.
+     *
+     * @param \Titon\Model\QueryBuilder $query
+     * @return $this
+     */
+    public function eagerLoad(QueryBuilder $query) {
+        $this->_eagerQuery = $query;
 
         return $this;
     }
-
-    abstract public function fetchResults(array $results);
 
     /**
      * Return the relation alias name.
@@ -164,6 +175,15 @@ abstract class Relation extends Base {
      */
     public function getConditions() {
         return $this->_conditions;
+    }
+
+    /**
+     * Return the eager loading query if available.
+     *
+     * @return \Titon\Model\QueryBuilder
+     */
+    public function getEagerQuery() {
+        return $this->_eagerQuery;
     }
 
     /**
@@ -252,15 +272,6 @@ abstract class Relation extends Base {
     abstract public function getType();
 
     /**
-     * Return true if the relation is dependent to the parent.
-     *
-     * @return bool
-     */
-    public function isDependent() {
-        return $this->getConfig('dependent');
-    }
-
-    /**
      * Link a related model to the primary model.
      *
      * @param \Titon\Model\Model $model
@@ -273,12 +284,39 @@ abstract class Relation extends Base {
     }
 
     /**
+     * If the related model has been queried for eager loading, fetch the related records using the defined query.
+     * Once results are fetched, merge in the related results into the parent results.
+     *
+     * This method is called through a `db.postFind` event and should not be called directly.
+     *
+     * @param \Titon\Event\Event $event
+     * @param array $results
+     * @param string $finder
+     */
+    abstract public function loadRelations(Event $event, array &$results, $finder);
+
+    /**
+     * {@inheritdoc}
+     */
+    public function registerEvents() {
+        return [
+            'db.postSave' => ['method' => 'saveLinked', 'priority' => 1], // Relations must be saved before anything else happens
+            'db.postDelete' => ['method' => 'deleteDependents', 'priority' => 1],
+            'db.postFind' => ['method' => 'loadRelations', 'priority' => 1], // Relations should exist before anything else happens
+        ];
+    }
+
+    /**
      * Save all the linked models. If a save fails, throw an exception to break out of any transactions.
      *
-     * @return $this
+     * This method is called through a `db.postSave` event and should not be called directly.
+     *
+     * @param \Titon\Event\Event $event
+     * @param int|int[] $id
+     * @param string $type
      * @throws \Titon\Model\Exception\RelationQueryFailureException
      */
-    abstract public function saveLinked();
+    abstract public function saveLinked(Event $event, $id, $type);
 
     /**
      * Set the alias name.
@@ -300,18 +338,6 @@ abstract class Relation extends Base {
      */
     public function setConditions(Closure $callback) {
         $this->_conditions = $callback;
-
-        return $this;
-    }
-
-    /**
-     * Set relation dependency.
-     *
-     * @param bool $state
-     * @return $this
-     */
-    public function setDependent($state) {
-        $this->setConfig('dependent', (bool) $state);
 
         return $this;
     }
@@ -397,7 +423,7 @@ abstract class Relation extends Base {
      * @return $this
      */
     public function unlink(Model $model) {
-        foreach ($this->getLinks() as $i => $link) {
+        foreach ($this->getLinked() as $i => $link) {
             if ($link === $model) {
                 unset($this->_links[$i]);
             }

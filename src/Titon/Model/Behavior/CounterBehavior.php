@@ -63,10 +63,9 @@ class CounterBehavior extends AbstractBehavior {
      *
      * @param \Titon\Event\Event $event
      * @param int|int[] $id
-     * @param bool $cascade
      * @return mixed
      */
-    public function preDelete(Event $event, $id, &$cascade) {
+    public function preDelete(Event $event, $id) {
         $model = $this->getModel();
 
         foreach ($this->getCounters() as $alias => $counter) {

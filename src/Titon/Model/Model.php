@@ -144,13 +144,6 @@ class Model extends Entity implements Listener {
     protected $_aliases = [];
 
     /**
-     * If enabled, will delete dependent relations when the parent record is deleted.
-     *
-     * @type bool
-     */
-    protected $_cascade = true;
-
-    /**
      * List of validation errors.
      *
      * @type string[]
@@ -214,6 +207,8 @@ class Model extends Entity implements Listener {
         $this->_relations[$relation->getAlias()] = $relation;
         $this->_aliases[$relation->getRelatedClass()] = $relation->getAlias();
 
+        $this->on('relation', $relation);
+
         return $this;
     }
 
@@ -267,29 +262,24 @@ class Model extends Entity implements Listener {
      * @see \Titon\Db\Repository::delete()
      *
      * @param array $options {
-     *      @type bool $cascade     Will recursively delete relation records if `dependent` is true
      *      @type bool $atomic      Will wrap the delete query and all nested queries in a transaction
      * }
      * @return int
      * @throws \Titon\Model\Exception\MissingPrimaryKeyException
      */
     public function delete(array $options = []) {
-        $options = $options + ['cascade' => true, 'atomic' => true];
+        $options = $options + ['atomic' => true];
         $id = $this->get($this->primaryKey);
 
         if (!$id) {
             throw new MissingPrimaryKeyException(sprintf('Cannot delete %s record if no ID is present', get_class($this)));
         }
 
-        // Set cascade flag
-        $this->_cascade = $options['cascade'];
-
         $model = $this;
         $operation = function() use ($model, $id, $options) {
             if ($count = $model->getRepository()->delete($id, $options)) {
                 $model->_data = [];
                 $model->_exists = false;
-                $model->_cascade = true;
 
                 return $count;
             }
@@ -312,47 +302,12 @@ class Model extends Entity implements Listener {
     }
 
     /**
-     * Loop through all relations and delete dependent records using the ID as a base.
-     *
-     * This method should not be called directly.
-     *
-     * @param \Titon\Event\Event $event
-     * @param int $id
-     * @throws \Titon\Model\Exception\RelationQueryFailureException
-     */
-    public function deleteDependents(Event $event, $id) {
-        if (!$this->_cascade) {
-            return;
-        }
-
-        // Set the ID so it's available in the relations
-        $this->set($this->primaryKey, $id);
-
-        // Delete dependents
-        foreach ($this->getRelations() as $relation) {
-            if ($relation->isDependent()) {
-                $relation->deleteDependents();
-            }
-        }
-    }
-
-    /**
      * Return a boolean on whether the current record exists.
      *
      * @return bool
      */
     public function exists() {
         return $this->_exists;
-    }
-
-    public function fetchRelations(Event $event, array &$results, $finder) {
-        if ($finder !== 'list' && $finder !== 'all') {
-            return;
-        }
-
-        foreach ($this->getRelations() as $relation) {
-            $results = $relation->fetchResults($results);
-        }
     }
 
     /**
@@ -577,14 +532,12 @@ class Model extends Entity implements Listener {
      * @param string $alias
      * @param string $class
      * @param string $relatedKey
-     * @param bool $dependent
      * @param \Closure $conditions
      * @return $this
      */
-    public function hasOne($alias, $class, $relatedKey = null, $dependent = true, Closure $conditions = null) {
+    public function hasOne($alias, $class, $relatedKey = null, Closure $conditions = null) {
         $relation = (new OneToOne($alias, $class))
-            ->setRelatedForeignKey($relatedKey)
-            ->setDependent($dependent);
+            ->setRelatedForeignKey($relatedKey);
 
         if ($conditions) {
             $relation->setConditions($conditions);
@@ -599,14 +552,12 @@ class Model extends Entity implements Listener {
      * @param string $alias
      * @param string $class
      * @param string $relatedKey
-     * @param bool $dependent
      * @param \Closure $conditions
      * @return $this
      */
-    public function hasMany($alias, $class, $relatedKey = null, $dependent = true, Closure $conditions = null) {
+    public function hasMany($alias, $class, $relatedKey = null, Closure $conditions = null) {
         $relation = (new OneToMany($alias, $class))
-            ->setRelatedForeignKey($relatedKey)
-            ->setDependent($dependent);
+            ->setRelatedForeignKey($relatedKey);
 
         if ($conditions) {
             $relation->setConditions($conditions);
@@ -733,7 +684,6 @@ class Model extends Entity implements Listener {
                     'foreignKey' => null,
                     'relatedForeignKey' => null,
                     'conditions' => null,
-                    'dependent' => true,
                     'junction' => null
                 ];
 
@@ -745,10 +695,10 @@ class Model extends Entity implements Listener {
                         $this->belongsToMany($alias, $relation['model'], $relation['junction'], $relation['foreignKey'], $relation['relatedForeignKey'], $relation['conditions']);
                     break;
                     case Relation::ONE_TO_ONE:
-                        $this->hasOne($alias, $relation['model'], $relation['relatedForeignKey'], $relation['dependent'], $relation['conditions']);
+                        $this->hasOne($alias, $relation['model'], $relation['relatedForeignKey'], $relation['conditions']);
                     break;
                     case Relation::ONE_TO_MANY:
-                        $this->hasMany($alias, $relation['model'], $relation['relatedForeignKey'], $relation['dependent'], $relation['conditions']);
+                        $this->hasMany($alias, $relation['model'], $relation['relatedForeignKey'], $relation['conditions']);
                     break;
                 }
             }
@@ -824,25 +774,27 @@ class Model extends Entity implements Listener {
     }
 
     /**
+     * Create a new repository query and wrap the query in a builder class.
+     * This builder will extend the query and provide model level functionality.
+     *
+     * @param string $type
+     * @return \Titon\Model\QueryBuilder
+     */
+    public function query($type) {
+        return new QueryBuilder($this->getRepository()->query($type), $this);
+    }
+
+    /**
      * {@inheritdoc}
      */
     public function registerEvents() {
         return [
             'db.preSave' => 'preSave',
-            'db.postSave' => [
-                ['method' => 'saveRelations', 'priority' => 1], // Relations must be saved before anything else happens
-                ['method' => 'postSave', 'priority' => 2]
-            ],
+            'db.postSave' => ['method' => 'postSave', 'priority' => 2], // Should be called after relations
             'db.preDelete' => 'preDelete',
-            'db.postDelete' => [
-                ['method' => 'postDelete', 'priority' => 1], // Allow them to toggle the cascade if need be
-                ['method' => 'deleteDependents', 'priority' => 2],
-            ],
+            'db.postDelete' => ['method' => 'postDelete', 'priority' => 2], // Should be called after relations
             'db.preFind' => 'preFind',
-            'db.postFind' => [
-                ['method' => 'fetchRelations', 'priority' => 1], // Relations should exist before anything else happens
-                ['method' => 'postFind', 'priority' => 2]
-            ],
+            'db.postFind' => ['method' => 'postFind', 'priority' => 2], // Should be called after relations
             'model.preValidate' => 'preValidate',
             'model.postValidate' => 'postValidate'
         ];
@@ -898,31 +850,6 @@ class Model extends Entity implements Listener {
     }
 
     /**
-     * Either update or insert related data for the primary model.
-     * Each relation will handle upserting differently depending on type.
-     *
-     * This method should not be called directly.
-     *
-     * @param \Titon\Event\Event $event
-     * @param int $id
-     * @param string $type
-     * @throws \Titon\Model\Exception\RelationQueryFailureException
-     */
-    public function saveRelations(Event $event, $id, $type) {
-        if ($type === Query::MULTI_INSERT) {
-            return;
-        }
-
-        // Set the ID so it's available in the relations
-        $this->set($this->primaryKey, $id);
-
-        // Save all linked models
-        foreach ($this->getRelations() as $relation) {
-            $relation->saveLinked();
-        }
-    }
-
-    /**
      * {@inheritdoc}
      */
     public function set($key, $value = null) {
@@ -940,6 +867,10 @@ class Model extends Entity implements Listener {
      */
     public function setRepository(Repository $repository) {
         $repository->on('model', $this);
+
+        foreach ($this->getRelations() as $relation) {
+            $repository->on('relation', $relation);
+        }
 
         $this->_repository = $repository;
 
@@ -1089,13 +1020,6 @@ class Model extends Entity implements Listener {
     }
 
     /**
-     * @see \Titon\Db\Repository::query()
-     */
-    public static function query($type) {
-        return new QueryBuilder(static::repository()->query($type), static::getInstance());
-    }
-
-    /**
      * Return the direct table instance.
      *
      * @return \Titon\Db\Repository
@@ -1107,10 +1031,10 @@ class Model extends Entity implements Listener {
     /**
      * @see \Titon\Db\Repository::select()
      *
-     * @return \Titon\Db\Query
+     * @return \Titon\Model\QueryBuilder
      */
     public static function select() {
-        return static::query(Query::SELECT)->fields(func_get_args());
+        return static::getInstance()->query(Query::SELECT)->fields(func_get_args());
     }
 
     /**

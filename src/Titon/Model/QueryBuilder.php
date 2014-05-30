@@ -6,6 +6,13 @@ use Titon\Model\Exception\InvalidRelationQueryException;
 use Titon\Model\ModelAware;
 use \Closure;
 
+/**
+ * Class QueryBuilder
+ *
+ * @package Titon\Model
+ * @method \Titon\Model\QueryBuilder all()
+ * @method \Titon\Model\QueryBuilder bindCallback()
+ */
 class QueryBuilder {
     use ModelAware;
 
@@ -54,7 +61,7 @@ class QueryBuilder {
         $relatedModel = $relation->getRelatedModel();
 
         // Create a new query
-        $query = $relatedModel->select();
+        $query = $relatedModel->query(Query::SELECT);
 
         // Apply relation conditions
         if ($baseConditions = $relation->getConditions()) {
@@ -73,7 +80,7 @@ class QueryBuilder {
             }
         }
 
-        $relation->fetch($query);
+        $relation->eagerLoad($query);
 
         return $this;
     }
