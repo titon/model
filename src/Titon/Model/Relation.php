@@ -299,10 +299,11 @@ abstract class Relation extends Base implements Listener {
      * {@inheritdoc}
      */
     public function registerEvents() {
+        // Repository callbacks use priority 1, so we should use 2
         return [
-            'db.postSave' => ['method' => 'saveLinked', 'priority' => 1], // Relations must be saved before anything else happens
-            'db.postDelete' => ['method' => 'deleteDependents', 'priority' => 1],
-            'db.postFind' => ['method' => 'loadRelations', 'priority' => 1], // Relations should exist before anything else happens
+            'db.postSave' => ['method' => 'saveLinked', 'priority' => 2], // Relations must be saved before anything else happens
+            'db.postDelete' => ['method' => 'deleteDependents', 'priority' => 2],
+            'db.postFind' => ['method' => 'loadRelations', 'priority' => 2], // Relations should exist before anything else happens
         ];
     }
 

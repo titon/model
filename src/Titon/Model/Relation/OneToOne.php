@@ -99,16 +99,16 @@ class OneToOne extends Relation {
         $rfk = $this->getRelatedForeignKey();
         $alias = $this->getAlias();
 
-        $related = $query
+        $relatedResults = $query
             ->where($rfk, Hash::pluck($results, $ppk))
             ->all();
 
-        if ($related->isEmpty()) {
+        if ($relatedResults->isEmpty()) {
             return;
         }
 
         foreach ($results as $i => $result) {
-            $results[$i][$alias] = $related->find($result[$ppk], $rfk);
+            $results[$i][$alias] = $relatedResults->find($result[$ppk], $rfk);
         }
     }
 

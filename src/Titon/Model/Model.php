@@ -173,14 +173,11 @@ class Model extends Entity implements Listener {
     protected $_validator;
 
     /**
-     * Initiate the model and create a new table object based on model settings.
-     * Optionally allow row data to be set.
+     * Optionally set a record of data into the model.
      *
      * @param array $data
      */
     public function __construct(array $data = []) {
-        $this->on('model', $this);
-        $this->initialize();
         $this->mapData($data);
     }
 
@@ -193,6 +190,12 @@ class Model extends Entity implements Listener {
         }
 
         return $this->getRepository()->addBehavior($behavior);
+    }
+
+    /**
+     * Make clone publicly available.
+     */
+    public function __clone() {
     }
 
     /**
@@ -405,6 +408,14 @@ class Model extends Entity implements Listener {
             return $repo;
         }
 
+        // Initialize the model once the repository is built
+        // This allows database level functionality to be deferred
+        $this->initialize();
+
+        // Do the same with events and the emitter
+        $this->on('model', $this);
+
+        // Set the repository last so events can be bound through `setRepository()`
         $this->setRepository(new Repository([
             'connection' => $this->connection,
             'table' => $this->table,
@@ -595,7 +606,7 @@ class Model extends Entity implements Listener {
     }
 
     /**
-     * Method that is called immediately after construction.
+     * Method used to bootstrap the model.
      */
     public function initialize() {
         $this->loadRelations();
@@ -788,13 +799,14 @@ class Model extends Entity implements Listener {
      * {@inheritdoc}
      */
     public function registerEvents() {
+        // Repository callbacks use priority 1, relations use 2, so we should use 3
         return [
             'db.preSave' => 'preSave',
-            'db.postSave' => ['method' => 'postSave', 'priority' => 2], // Should be called after relations
+            'db.postSave' => ['method' => 'postSave', 'priority' => 3], // Should be called after relations
             'db.preDelete' => 'preDelete',
-            'db.postDelete' => ['method' => 'postDelete', 'priority' => 2], // Should be called after relations
+            'db.postDelete' => ['method' => 'postDelete', 'priority' => 3], // Should be called after relations
             'db.preFind' => 'preFind',
-            'db.postFind' => ['method' => 'postFind', 'priority' => 2], // Should be called after relations
+            'db.postFind' => ['method' => 'postFind', 'priority' => 3], // Should be called after relations
             'model.preValidate' => 'preValidate',
             'model.postValidate' => 'postValidate'
         ];
@@ -934,6 +946,10 @@ class Model extends Entity implements Listener {
             return true;
         }
 
+        // Trigger the repository so that events are initialized
+        $this->getRepository();
+
+        // Build the validator
         $validator = $this->getValidator();
         $validator->reset();
         $validator->addMessages($this->messages);

@@ -94,17 +94,17 @@ class ManyToOne extends Relation {
         $pfk = $this->getPrimaryForeignKey();
         $alias = $this->getAlias();
 
-        $related = $query
+        $relatedResults = $query
             ->where($rpk, Hash::pluck($results, $pfk))
             ->bindCallback($this->getConditions())
             ->all();
 
-        if ($related->isEmpty()) {
+        if ($relatedResults->isEmpty()) {
             return;
         }
 
         foreach ($results as $i => $result) {
-            $results[$i][$alias] = $related->find($result[$pfk], $rpk);
+            $results[$i][$alias] = $relatedResults->find($result[$pfk], $rpk);
         }
     }
 

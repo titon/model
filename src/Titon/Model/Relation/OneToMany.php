@@ -84,21 +84,19 @@ class OneToMany extends Relation {
         $rfk = $this->getRelatedForeignKey();
         $alias = $this->getAlias();
 
-        $related = $query
+        $relatedResults = $query
             ->where($rfk, Hash::pluck($results, $ppk))
             ->bindCallback($this->getConditions())
             ->all();
 
-        if ($related->isEmpty()) {
+        if ($relatedResults->isEmpty()) {
             return;
         }
 
         foreach ($results as $i => $result) {
             $id = $result[$ppk];
 
-            $results[$i][$alias] = $related->filter(function($entity) use ($rfk, $id) {
-                return ($entity[$rfk] === $id);
-            }, false);
+            $results[$i][$alias] = $relatedResults->findMany($id, $rfk);
         }
     }
 

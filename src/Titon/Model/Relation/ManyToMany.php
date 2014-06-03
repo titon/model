@@ -7,6 +7,7 @@
 
 namespace Titon\Model\Relation;
 
+use Titon\Db\EntityCollection;
 use Titon\Db\Query;
 use Titon\Db\Repository;
 use Titon\Event\Event;
@@ -177,12 +178,12 @@ class ManyToMany extends Relation {
         $rids = $junctionResults->pluck($rfk);
 
         // Fetch related records
-        $related = $query
+        $relatedResults = $query
             ->where($rpk, $rids)
             ->bindCallback($this->getConditions())
             ->all();
 
-        if ($related->isEmpty()) {
+        if ($relatedResults->isEmpty()) {
             return;
         }
 
@@ -191,15 +192,29 @@ class ManyToMany extends Relation {
         foreach ($results as $i => $result) {
             $id = $result[$ppk];
 
-            // Get a list of related IDs from the junction records
-            $jids = $junctionResults->filter(function($entity) use ($pfk, $id) {
-                return ($entity[$pfk] === $id);
-            }, false)->pluck($rfk);
+            // Gather the junction records that associate with the current primary modal
+            $filteredJunctions = $junctionResults->findMany($id, $pfk);
+            $filteredIDs = $filteredJunctions->pluck($rfk);
 
-            // TODO - merge in junction record
-            $results[$i][$alias] = $related->filter(function($entity) use ($rpk, $jids) {
-                return in_array($entity[$rpk], $jids);
-            }, false);
+            // Find all related records that match up with the junction IDs
+            $relatedMatched = $relatedResults->findMany($filteredIDs, $rpk);
+
+            // Merge the junction record with the matched record
+            $relatedMerged = [];
+
+            foreach ($relatedMatched as $entity) {
+                $matchedEntity = clone $entity; // Clone entity else appending the junction will update all model references
+
+                foreach ($filteredJunctions as $junctionEntity) {
+                    if ($id == $junctionEntity[$pfk] && $matchedEntity[$rpk] == $junctionEntity[$rfk]) {
+                        $matchedEntity['junction'] = $junctionEntity;
+                    }
+                }
+
+                $relatedMerged[] = $matchedEntity;
+            };
+
+            $results[$i][$alias] = new EntityCollection($relatedMerged);
         }
     }
 

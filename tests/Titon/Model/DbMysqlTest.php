@@ -3,11 +3,13 @@ namespace Titon\Model;
 
 use Titon\Common\Config;
 use Titon\Db\Database;
+use Titon\Db\Entity;
 use Titon\Db\EntityCollection;
 use Titon\Db\Mysql\MysqlDriver;
 use Titon\Db\Query;
 use Titon\Test\Stub\Model\Book;
 use Titon\Test\Stub\Model\Country;
+use Titon\Test\Stub\Model\Genre;
 use Titon\Test\Stub\Model\Profile;
 use Titon\Test\Stub\Model\User;
 use Titon\Test\Stub\Model\Series;
@@ -196,8 +198,6 @@ class DbMysqlTest extends AbstractDbTest {
             ->orderBy('id', 'asc')
             ->all();
 
-        //print_r(array_map('strval', User::repository()->getDriver()->getLoggedQueries()));
-
         $this->assertEquals(new EntityCollection([
              new User([
                 'id' => 1,
@@ -249,6 +249,184 @@ class DbMysqlTest extends AbstractDbTest {
                     'iso' => 'AUS'
                 ])
             ])
+        ]), $actual);
+    }
+
+    public function testReadSingleWithManyToMany() {
+        $this->loadFixtures(['Books', 'Genres', 'BookGenres']);
+
+        $actual = Book::select()
+            ->where('id', 5)
+            ->with('Genres')
+            ->first();
+
+        $this->assertEquals(new Book([
+            'id' => 5,
+            'series_id' => 1,
+            'name' => 'A Dance with Dragons',
+            'isbn' => '0-553-80147-3',
+            'released' => '2011-07-19',
+            'Genres' => new EntityCollection([
+                new Genre([
+                    'id' => 3,
+                    'name' => 'Action-Adventure',
+                    'book_count' => 8,
+                    'junction' => new Entity([
+                        'id' => 14,
+                        'book_id' => 5,
+                        'genre_id' => 3
+                    ])
+                ]),
+                new Genre([
+                    'id' => 5,
+                    'name' => 'Horror',
+                    'book_count' => 5,
+                    'junction' => new Entity([
+                        'id' => 15,
+                        'book_id' => 5,
+                        'genre_id' => 5
+                    ])
+                ]),
+                new Genre([
+                    'id' => 8,
+                    'name' => 'Fantasy',
+                    'book_count' => 15,
+                    'junction' => new Entity([
+                        'id' => 13,
+                        'book_id' => 5,
+                        'genre_id' => 8
+                    ])
+                ]),
+            ])
+        ]), $actual);
+    }
+
+    public function testReadMultipleWithManyToMany() {
+        $this->loadFixtures(['Books', 'Genres', 'BookGenres']);
+
+        $actual = Book::select()
+            ->where('series_id', 3)
+            ->with('Genres')
+            ->all();
+
+        $this->assertEquals(new EntityCollection([
+            new Book([
+                'id' => 13,
+                'series_id' => 3,
+                'name' => 'The Fellowship of the Ring',
+                'isbn' => '',
+                'released' => '1954-07-24',
+                'Genres' => new EntityCollection([
+                    new Genre([
+                        'id' => 3,
+                        'name' => 'Action-Adventure',
+                        'book_count' => 8,
+                        'junction' => new Entity([
+                            'id' => 38,
+                            'book_id' => 13,
+                            'genre_id' => 3
+                        ])
+                    ]),
+                    new Genre([
+                        'id' => 6,
+                        'name' => 'Thriller',
+                        'book_count' => 3,
+                        'junction' => new Entity([
+                            'id' => 39,
+                            'book_id' => 13,
+                            'genre_id' => 6
+                        ])
+                    ]),
+                    new Genre([
+                        'id' => 8,
+                        'name' => 'Fantasy',
+                        'book_count' => 15,
+                        'junction' => new Entity([
+                            'id' => 37,
+                            'book_id' => 13,
+                            'genre_id' => 8
+                        ])
+                    ]),
+                ])
+            ]),
+            new Book([
+                'id' => 14,
+                'series_id' => 3,
+                'name' => 'The Two Towers',
+                'isbn' => '',
+                'released' => '1954-11-11',
+                'Genres' => new EntityCollection([
+                    new Genre([
+                        'id' => 3,
+                        'name' => 'Action-Adventure',
+                        'book_count' => 8,
+                        'junction' => new Entity([
+                            'id' => 41,
+                            'book_id' => 14,
+                            'genre_id' => 3
+                        ])
+                    ]),
+                    new Genre([
+                        'id' => 6,
+                        'name' => 'Thriller',
+                        'book_count' => 3,
+                        'junction' => new Entity([
+                            'id' => 42,
+                            'book_id' => 14,
+                            'genre_id' => 6
+                        ])
+                    ]),
+                    new Genre([
+                        'id' => 8,
+                        'name' => 'Fantasy',
+                        'book_count' => 15,
+                        'junction' => new Entity([
+                            'id' => 40,
+                            'book_id' => 14,
+                            'genre_id' => 8
+                        ])
+                    ]),
+                ])
+            ]),
+            new Book([
+                'id' => 15,
+                'series_id' => 3,
+                'name' => 'The Return of the King',
+                'isbn' => '',
+                'released' => '1955-10-25',
+                'Genres' => new EntityCollection([
+                    new Genre([
+                        'id' => 3,
+                        'name' => 'Action-Adventure',
+                        'book_count' => 8,
+                        'junction' => new Entity([
+                            'id' => 44,
+                            'book_id' => 15,
+                            'genre_id' => 3
+                        ])
+                    ]),
+                    new Genre([
+                        'id' => 6,
+                        'name' => 'Thriller',
+                        'book_count' => 3,
+                        'junction' => new Entity([
+                            'id' => 45,
+                            'book_id' => 15,
+                            'genre_id' => 6
+                        ])
+                    ]),
+                    new Genre([
+                        'id' => 8,
+                        'name' => 'Fantasy',
+                        'book_count' => 15,
+                        'junction' => new Entity([
+                            'id' => 43,
+                            'book_id' => 15,
+                            'genre_id' => 8
+                        ])
+                    ]),
+                ])
+            ]),
         ]), $actual);
     }
 
