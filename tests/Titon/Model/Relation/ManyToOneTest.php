@@ -1,6 +1,7 @@
 <?php
 namespace Titon\Model\Relation;
 
+use Titon\Test\Stub\Model\User;
 use Titon\Test\TestCase;
 
 /**
@@ -24,13 +25,27 @@ class ManyToOneTest extends TestCase {
         $this->assertEquals('manyToOne', $this->object->getType());
     }
 
-    public function testIsDependent() {
-        $this->assertFalse($this->object->isDependent());
+    public function testLinkUnlink() {
+        $model1 = new User(['foo' => 'bar']);
+        $model2 = new User(['bar' => 'foo']);
 
-        // Cannot be changed
-        $this->object->setDependent(true);
+        $this->assertEquals([], $this->object->getLinked());
 
-        $this->assertFalse($this->object->isDependent());
+        $this->object->link($model1);
+
+        $this->assertEquals([$model1], $this->object->getLinked());
+
+        $this->object->link($model2);
+
+        $this->assertEquals([$model2], $this->object->getLinked());
+
+        $this->object->unlink($model1);
+
+        $this->assertEquals([$model2], $this->object->getLinked());
+
+        $this->object->unlink($model2);
+
+        $this->assertEquals([], $this->object->getLinked());
     }
 
 }

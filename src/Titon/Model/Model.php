@@ -178,7 +178,14 @@ class Model extends Entity implements Listener {
      * @param array $data
      */
     public function __construct(array $data = []) {
+        $this->initialize();
         $this->mapData($data);
+    }
+
+    /**
+     * Make clone publicly available.
+     */
+    public function __clone() {
     }
 
     /**
@@ -190,12 +197,6 @@ class Model extends Entity implements Listener {
         }
 
         return $this->getRepository()->addBehavior($behavior);
-    }
-
-    /**
-     * Make clone publicly available.
-     */
-    public function __clone() {
     }
 
     /**
@@ -408,14 +409,6 @@ class Model extends Entity implements Listener {
             return $repo;
         }
 
-        // Initialize the model once the repository is built
-        // This allows database level functionality to be deferred
-        $this->initialize();
-
-        // Do the same with events and the emitter
-        $this->on('model', $this);
-
-        // Set the repository last so events can be bound through `setRepository()`
         $this->setRepository(new Repository([
             'connection' => $this->connection,
             'table' => $this->table,
@@ -666,7 +659,13 @@ class Model extends Entity implements Listener {
      * @return $this
      */
     public function linkMany() {
-        foreach (func_get_args() as $model) {
+        $models = func_get_args();
+
+        if (is_array($models[0])) {
+            $models = $models[0];
+        }
+
+        foreach ($models as $model) {
             $this->link($model);
         }
 
@@ -716,6 +715,20 @@ class Model extends Entity implements Listener {
         }
 
         return $this;
+    }
+
+    /**
+     * When data is mapped through the constructor, set the exists flag if necessary.
+     *
+     * @param array $data
+     * @return $this
+     */
+    public function mapData(array $data) {
+        if (!empty($data[$this->primaryKey])) {
+            $this->_exists = true;
+        }
+
+        return parent::mapData($data);
     }
 
     /**
@@ -835,7 +848,7 @@ class Model extends Entity implements Listener {
 
         $model = $this;
         $operation = function() use ($model, $options) {
-            if ($id = $model->getRepository()->upsert($model->toArray(), null, $options)) {
+            if ($id = $model->getRepository()->upsert($model, null, $options)) {
                 $model->set($model->getPrimaryKey(), $id);
                 $model->_exists = true;
 
@@ -898,6 +911,9 @@ class Model extends Entity implements Listener {
     public function setValidator(Validator $validator) {
         $this->_validator = $validator;
 
+        // Only set model events if we plan on validating
+        $this->on('model', $this);
+
         return $this;
     }
 
@@ -926,7 +942,13 @@ class Model extends Entity implements Listener {
      * @return $this
      */
     public function unlinkMany() {
-        foreach (func_get_args() as $model) {
+        $models = func_get_args();
+
+        if (is_array($models[0])) {
+            $models = $models[0];
+        }
+
+        foreach ($models as $model) {
             $this->unlink($model);
         }
 
@@ -945,9 +967,6 @@ class Model extends Entity implements Listener {
         if (!$this->validate) {
             return true;
         }
-
-        // Trigger the repository so that events are initialized
-        $this->getRepository();
 
         // Build the validator
         $validator = $this->getValidator();
@@ -1006,8 +1025,6 @@ class Model extends Entity implements Listener {
     public static function find($id, array $options = []) {
         /** @type \Titon\Model\Model $record */
         if ($record = static::repository()->read($id, $options)) {
-            $record->_exists = true;
-
             return $record;
         }
 

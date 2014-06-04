@@ -7,6 +7,7 @@ use Titon\Db\Entity;
 use Titon\Db\EntityCollection;
 use Titon\Db\Mysql\MysqlDriver;
 use Titon\Db\Query;
+use Titon\Db\Repository;
 use Titon\Test\Stub\Model\Book;
 use Titon\Test\Stub\Model\Country;
 use Titon\Test\Stub\Model\Genre;
@@ -20,6 +21,223 @@ class DbMysqlTest extends AbstractDbTest {
         parent::setUp();
 
         Database::registry()->addDriver('default', new MysqlDriver(Config::get('db')));
+    }
+
+    public function logQueries(Repository $repo) {
+        print_r(array_map('strval', $repo->getDriver()->getLoggedQueries()));
+    }
+
+    public function testCreateWithOneToOne() {
+        $this->loadFixtures(['Users', 'Profiles']);
+
+        $user = new User();
+        $user->country_id = 1;
+        $user->username = 'ironman';
+        $user->firstName = 'Tony';
+        $user->lastName = 'Stark';
+        $user->password = '7NAks9193KAkjs1';
+        $user->email = 'ironman@email.com';
+        $user->age = 38;
+
+        $profile = new Profile();
+        $profile->lastLogin = '2012-06-24 17:30:33';
+
+        $user->link($profile);
+
+        $this->assertEquals(6, $user->save(['validate' => false]));
+
+        $this->assertEquals(new User([
+            'id' => 6,
+            'country_id' => 1,
+            'username' => 'ironman',
+            'firstName' => 'Tony',
+            'lastName' => 'Stark',
+            'password' => '7NAks9193KAkjs1',
+            'email' => 'ironman@email.com',
+            'age' => 38,
+            'created' => '',
+            'modified' => '',
+            'Profile' => new Profile([
+                'id' => 6,
+                'user_id' => 6,
+                'lastLogin' => '2012-06-24 17:30:33',
+                'currentLogin' => ''
+            ])
+        ]), User::select()->where('id', 6)->with('Profile')->first());
+    }
+
+    public function testCreateWithOneToOneResetsPrevious() {
+        $this->loadFixtures(['Users', 'Profiles']);
+
+        $user = User::select()
+            ->with('Profile')
+            ->where('id', 1)
+            ->first();
+
+        $this->assertEquals(new User([
+            'id' => 1,
+            'country_id' => 1,
+            'username' => 'miles',
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson',
+            'password' => '1Z5895jf72yL77h',
+            'email' => 'miles@email.com',
+            'age' => 25,
+            'created' => '1988-02-26 21:22:34',
+            'modified' => null,
+            'Profile' => new Profile([
+                'id' => 4,
+                'user_id' => 1,
+                'lastLogin' => '2012-02-15 21:22:34',
+                'currentLogin' => '2013-06-06 19:11:03'
+            ])
+        ]), $user);
+
+        // Change profile
+        $profile = new Profile();
+        $profile->lastLogin = '2012-06-24 17:30:33';
+
+        $user->link($profile);
+
+        $this->assertEquals(1, $user->save(['validate' => false]));
+
+        $this->assertEquals(new User([
+            'id' => 1,
+            'country_id' => 1,
+            'username' => 'miles',
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson',
+            'password' => '1Z5895jf72yL77h',
+            'email' => 'miles@email.com',
+            'age' => 25,
+            'created' => '1988-02-26 21:22:34',
+            'modified' => null,
+            'Profile' => new Profile([
+                'id' => 6,
+                'user_id' => 1,
+                'lastLogin' => '2012-06-24 17:30:33',
+                'currentLogin' => ''
+            ])
+        ]), User::select()->with('Profile')->where('id', 1)->first());
+
+        $this->assertEquals(new Profile([
+            'id' => 4,
+            'user_id' => null,
+            'lastLogin' => '2012-02-15 21:22:34',
+            'currentLogin' => '2013-06-06 19:11:03'
+        ]), Profile::find(4));
+    }
+
+    public function testCreateWithOneToMany() {
+        $this->loadFixtures(['Series', 'Books']);
+
+        $series = new Series();
+        $series->name = 'A Series Of Unfortunate Events';
+        $series->linkMany([
+            new Book(['name' => 'The Bad Beginning']),
+            new Book(['name' => 'The Reptile Room']),
+            new Book(['name' => 'The Wide Window']),
+            new Book(['name' => 'The Miserable Mill']),
+            new Book(['name' => 'The Austere Academy']),
+            new Book(['name' => 'The Ersatz Elevator']),
+            new Book(['name' => 'The Vile Village'])
+        ]);
+
+        $this->assertEquals(4, $series->save(['validate' => false]));
+
+        $this->assertEquals(new Series([
+            'id' => 4,
+            'author_id' => 0,
+            'name' => 'A Series Of Unfortunate Events',
+            'Books' => new EntityCollection([
+                new Book(['id' => 16, 'series_id' => 4, 'name' => 'The Bad Beginning', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 17, 'series_id' => 4, 'name' => 'The Reptile Room', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 18, 'series_id' => 4, 'name' => 'The Wide Window', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 19, 'series_id' => 4, 'name' => 'The Miserable Mill', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 20, 'series_id' => 4, 'name' => 'The Austere Academy', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 21, 'series_id' => 4, 'name' => 'The Ersatz Elevator', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 22, 'series_id' => 4, 'name' => 'The Vile Village', 'isbn' => '', 'released' => '']),
+            ])
+        ]), Series::select()->with('Books')->where('id', 4)->first());
+
+        // Save more
+        $series->linkMany([
+            new Book(['name' => 'The Hostile Hospital']),
+            new Book(['name' => 'The Carnivorous Carnival']),
+            new Book(['name' => 'The Slippery Slope']),
+            new Book(['name' => 'The Grim Grotto']),
+            new Book(['name' => 'The Penultimate Peril']),
+            new Book(['name' => 'The End']),
+        ]);
+
+        $this->assertEquals(4, $series->save(['validate' => false]));
+
+        $this->assertEquals(new Series([
+            'id' => 4,
+            'author_id' => 0,
+            'name' => 'A Series Of Unfortunate Events',
+            'Books' => new EntityCollection([
+                new Book(['id' => 16, 'series_id' => 4, 'name' => 'The Bad Beginning', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 17, 'series_id' => 4, 'name' => 'The Reptile Room', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 18, 'series_id' => 4, 'name' => 'The Wide Window', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 19, 'series_id' => 4, 'name' => 'The Miserable Mill', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 20, 'series_id' => 4, 'name' => 'The Austere Academy', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 21, 'series_id' => 4, 'name' => 'The Ersatz Elevator', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 22, 'series_id' => 4, 'name' => 'The Vile Village', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 23, 'series_id' => 4, 'name' => 'The Hostile Hospital', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 24, 'series_id' => 4, 'name' => 'The Carnivorous Carnival', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 25, 'series_id' => 4, 'name' => 'The Slippery Slope', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 26, 'series_id' => 4, 'name' => 'The Grim Grotto', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 27, 'series_id' => 4, 'name' => 'The Penultimate Peril', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 28, 'series_id' => 4, 'name' => 'The End', 'isbn' => '', 'released' => '']),
+            ])
+        ]), Series::select()->with('Books')->where('id', 4)->first());
+
+        $this->logQueries(Series::repository());
+    }
+
+    public function testCreateWithManyToMany() {
+        $this->loadFixtures(['Genres', 'Books', 'BookGenres']);
+
+        $book = new Book();
+        $book->series_id = 1;
+        $book->name = 'The Winds of Winter';
+        $book->linkMany([
+            new Genre(['id' => 3, 'name' => 'Action-Adventure']), // Existing genre
+            new Genre(['name' => 'Epic-Horror']), // New genre
+        ]);
+
+        $this->assertEquals(16, $book->save(['validate' => false]));
+
+        $this->assertEquals(new Book([
+            'id' => 16,
+            'series_id' => 1,
+            'name' => 'The Winds of Winter',
+            'isbn' => '',
+            'released' => '',
+            'Genres' => new EntityCollection([
+                new Genre([
+                    'id' => 3,
+                    'name' => 'Action-Adventure',
+                    'book_count' => 8,
+                    'junction' => new Entity([
+                        'id' => 46,
+                        'book_id' => 16,
+                        'genre_id' => 3
+                    ])
+                ]),
+                new Genre([
+                    'id' => 12,
+                    'name' => 'Epic-Horror',
+                    'book_count' => 0,
+                    'junction' => new Entity([
+                        'id' => 47,
+                        'book_id' => 16,
+                        'genre_id' => 12
+                    ])
+                ])
+            ])
+        ]), Book::select()->with('Genres')->where('id', 16)->first());
     }
 
     public function testReadSingleWithOneToOne() {

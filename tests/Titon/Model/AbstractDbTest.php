@@ -37,46 +37,6 @@ class AbstractDbTest extends TestCase {
         ], User::find(6)->toArray());
     }
 
-    public function testCreateWithOneToOne() {
-        $this->loadFixtures(['Users', 'Profiles']);
-
-        $profile = new Profile();
-        $profile->lastLogin = '2012-06-24 17:30:33';
-
-        $user = new User();
-        $user->country_id = 1;
-        $user->username = 'ironman';
-        $user->firstName = 'Tony';
-        $user->lastName = 'Stark';
-        $user->password = '7NAks9193KAkjs1';
-        $user->email = 'ironman@email.com';
-        $user->age = 38;
-        $user->link($profile);
-
-        print_r($user);
-
-        /*$this->assertEquals(6, $user->save());
-
-        $this->assertEquals([
-            'id' => 6,
-            'country_id' => 1,
-            'username' => 'ironman',
-            'firstName' => 'Tony',
-            'lastName' => 'Stark',
-            'password' => '7NAks9193KAkjs1',
-            'email' => 'ironman@email.com',
-            'age' => 38,
-            'created' => '',
-            'modified' => '',
-            'Profile' => [
-                'id' => 6,
-                'user_id' => 6,
-                'lastLogin' => '2012-06-24 17:30:33',
-                'currentLogin' => ''
-            ]
-        ], $user->data);*/
-    }
-
     public function testDecrement() {
         $this->loadFixtures('Topics');
 

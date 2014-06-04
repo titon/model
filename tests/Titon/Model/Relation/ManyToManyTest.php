@@ -1,6 +1,7 @@
 <?php
 namespace Titon\Model\Relation;
 
+use Titon\Test\Stub\Model\User;
 use Titon\Test\TestCase;
 
 /**
@@ -26,15 +27,6 @@ class ManyToManyTest extends TestCase {
 
     public function testGetType() {
         $this->assertEquals('manyToMany', $this->object->getType());
-    }
-
-    public function testIsDependent() {
-        $this->assertTrue($this->object->isDependent());
-
-        // Cannot be changed
-        $this->object->setDependent(false);
-
-        $this->assertTrue($this->object->isDependent());
     }
 
     public function testGetSetJunction() {
@@ -63,6 +55,29 @@ class ManyToManyTest extends TestCase {
         $this->assertInstanceOf('Titon\Db\Repository', $repo);
         $this->assertEquals('lookup_table', $repo->getTable());
         $this->assertSame($repo, $this->object->getJunctionRepository());
+    }
+
+    public function testLinkUnlink() {
+        $model1 = new User(['foo' => 'bar']);
+        $model2 = new User(['bar' => 'foo']);
+
+        $this->assertEquals([], $this->object->getLinked());
+
+        $this->object->link($model1);
+
+        $this->assertEquals([$model1], $this->object->getLinked());
+
+        $this->object->link($model2);
+
+        $this->assertEquals([$model1, $model2], $this->object->getLinked());
+
+        $this->object->unlink($model1);
+
+        $this->assertEquals([1 => $model2], $this->object->getLinked());
+
+        $this->object->unlink($model2);
+
+        $this->assertEquals([], $this->object->getLinked());
     }
 
 }

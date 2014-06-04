@@ -219,6 +219,14 @@ abstract class Relation extends Base implements Listener {
      * @return \Titon\Model\Model
      */
     public function getPrimaryModel() {
+        if ($model = $this->_model) {
+            return $model;
+        }
+
+        $class = $this->getPrimaryClass();
+
+        $this->setPrimaryModel(new $class());
+
         return $this->_model;
     }
 

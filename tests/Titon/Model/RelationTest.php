@@ -3,7 +3,7 @@ namespace Titon\Model;
 
 use Titon\Db\Query\Expr;
 use Titon\Db\Query;
-use Titon\Model\Relation\AbstractRelation;
+use Titon\Model\Relation\OneToOne;
 use Titon\Test\Stub\Model\User;
 use Titon\Test\TestCase;
 
@@ -15,7 +15,7 @@ class RelationTest extends TestCase {
     protected function setUp() {
         parent::setUp();
 
-        $this->object = new RelationStub('User', 'Titon\Test\Stub\Model\User');
+        $this->object = new OneToOne('User', 'Titon\Test\Stub\Model\User');
     }
 
     public function testBuildForeignKey() {
@@ -89,7 +89,7 @@ class RelationTest extends TestCase {
     }
 
     public function testGetSetRelatedForeignKey() {
-        $this->assertEquals(null, $this->object->getRelatedForeignKey());
+        $this->assertEquals('_id', $this->object->getRelatedForeignKey());
 
         $this->object->setRelatedForeignKey('profile_id');
 
@@ -105,8 +105,4 @@ class RelationTest extends TestCase {
         $this->assertSame($model, $this->object->getRelatedModel());
     }
 
-}
-
-class RelationStub extends AbstractRelation {
-    public function getType() { return ''; }
 }
