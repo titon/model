@@ -7,7 +7,9 @@
 
 namespace Titon\Model\Relation;
 
+use Titon\Db\EntityCollection;
 use Titon\Event\Event;
+use Titon\Model\Exception\RelationQueryFailureException;
 use Titon\Model\Model;
 use Titon\Model\Relation;
 use Titon\Utility\Hash;
@@ -27,7 +29,7 @@ class ManyToOne extends Relation {
      *
      * {@inheritdoc}
      */
-    public function deleteDependents(Event $event, $ids) {
+    public function deleteDependents(Event $event, $ids, $count) {
         return;
     }
 
@@ -88,6 +90,7 @@ class ManyToOne extends Relation {
             return;
         }
 
+        // Reset query
         $this->_eagerQuery = null;
 
         $rpk = $this->getRelatedModel()->getPrimaryKey();
@@ -95,7 +98,7 @@ class ManyToOne extends Relation {
         $alias = $this->getAlias();
 
         $relatedResults = $query
-            ->where($rpk, Hash::pluck($results, $pfk))
+            ->where($rpk, (new EntityCollection($results))->pluck($pfk))
             ->bindCallback($this->getConditions())
             ->all();
 
@@ -109,11 +112,15 @@ class ManyToOne extends Relation {
     }
 
     /**
-     * Belongs to should not be saved when the child is saved.
-     *
      * {@inheritdoc}
      */
-    public function saveLinked(Event $event, $ids, $type) {
+    public function saveLinked(Event $event, $ids, $count) {
+        foreach ($this->getLinked() as $link) {
+            if (!$link->save(['validate' => false, 'atomic' => false])) {
+                throw new RelationQueryFailureException(sprintf('Failed to save %s related record(s)', $this->getAlias()));
+            }
+        }
+
         $this->_links = [];
     }
 

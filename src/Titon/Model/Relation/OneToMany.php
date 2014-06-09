@@ -7,6 +7,7 @@
 
 namespace Titon\Model\Relation;
 
+use Titon\Db\EntityCollection;
 use Titon\Db\Query;
 use Titon\Event\Event;
 use Titon\Model\Exception\RelationQueryFailureException;
@@ -24,13 +25,17 @@ use Titon\Utility\Hash;
 class OneToMany extends Relation {
 
     /**
-     * Child records should not be deleted.
+     * Child records should not be deleted, but will have the foreign key modified.
      * Use database level `ON DELETE CASCADE` for cascading deletion.
      *
      * {@inheritdoc}
      */
-    public function deleteDependents(Event $event, $ids) {
-        return;
+    public function deleteDependents(Event $event, $ids, $count) {
+        $rfk = $this->getRelatedForeignKey();
+
+        $this->getRelatedModel()->updateMany([$rfk => null], function(Query $query) use ($rfk, $ids) {
+            $query->where($rfk, $ids);
+        });
     }
 
     /**
@@ -78,6 +83,7 @@ class OneToMany extends Relation {
             return;
         }
 
+        // Reset query
         $this->_eagerQuery = null;
 
         $ppk = $this->getPrimaryModel()->getPrimaryKey();
@@ -85,7 +91,7 @@ class OneToMany extends Relation {
         $alias = $this->getAlias();
 
         $relatedResults = $query
-            ->where($rfk, Hash::pluck($results, $ppk))
+            ->where($rfk, (new EntityCollection($results))->pluck($ppk))
             ->bindCallback($this->getConditions())
             ->all();
 
@@ -93,23 +99,23 @@ class OneToMany extends Relation {
             return;
         }
 
-        foreach ($results as $i => $result) {
-            $id = $result[$ppk];
+        $groupedResults = $relatedResults->groupBy($rfk);
 
-            $results[$i][$alias] = $relatedResults->findMany($id, $rfk);
+        foreach ($results as $i => $result) {
+            $results[$i][$alias] = $groupedResults[$result[$ppk]];
         }
     }
 
     /**
      * {@inheritdoc}
      */
-    public function saveLinked(Event $event, $ids, $type) {
-        if ($type === Query::MULTI_INSERT) {
-            return;
-        }
-
+    public function saveLinked(Event $event, $ids, $count) {
         $rfk = $this->getRelatedForeignKey();
         $links = $this->getLinked();
+
+        if (!$ids || !$links) {
+            return;
+        }
 
         foreach ((array) $ids as $id) {
             foreach ($links as $link) {

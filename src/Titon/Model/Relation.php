@@ -124,8 +124,9 @@ abstract class Relation extends Base implements Listener {
      *
      * @param \Titon\Event\Event $event
      * @param int|int[] $id
+     * @param int $count
      */
-    abstract public function deleteDependents(Event $event, $id);
+    abstract public function deleteDependents(Event $event, $id, $count);
 
     /**
      * Return a foreign key either for the primary or related model.
@@ -322,10 +323,10 @@ abstract class Relation extends Base implements Listener {
      *
      * @param \Titon\Event\Event $event
      * @param int|int[] $id
-     * @param string $type
+     * @param int $count
      * @throws \Titon\Model\Exception\RelationQueryFailureException
      */
-    abstract public function saveLinked(Event $event, $id, $type);
+    abstract public function saveLinked(Event $event, $id, $count);
 
     /**
      * Set the alias name.

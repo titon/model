@@ -7,6 +7,7 @@
 
 namespace Titon\Model\Relation;
 
+use Titon\Db\EntityCollection;
 use Titon\Db\Query;
 use Titon\Event\Event;
 use Titon\Model\Exception\RelationQueryFailureException;
@@ -25,13 +26,17 @@ use Titon\Utility\Hash;
 class OneToOne extends Relation {
 
     /**
-     * Child records should not be deleted.
+     * Child records should not be deleted, but will have the foreign key modified.
      * Use database level `ON DELETE CASCADE` for cascading deletion.
      *
      * {@inheritdoc}
      */
-    public function deleteDependents(Event $event, $ids) {
-        return;
+    public function deleteDependents(Event $event, $ids, $count) {
+        $rfk = $this->getRelatedForeignKey();
+
+        $this->getRelatedModel()->updateMany([$rfk => null], function(Query $query) use ($rfk, $ids) {
+            $query->where($rfk, $ids);
+        });
     }
 
     /**
@@ -93,6 +98,7 @@ class OneToOne extends Relation {
             return;
         }
 
+        // Reset query
         $this->_eagerQuery = null;
 
         $ppk = $this->getPrimaryModel()->getPrimaryKey();
@@ -100,7 +106,7 @@ class OneToOne extends Relation {
         $alias = $this->getAlias();
 
         $relatedResults = $query
-            ->where($rfk, Hash::pluck($results, $ppk))
+            ->where($rfk, (new EntityCollection($results))->pluck($ppk))
             ->all();
 
         if ($relatedResults->isEmpty()) {
@@ -115,11 +121,11 @@ class OneToOne extends Relation {
     /**
      * {@inheritdoc}
      */
-    public function saveLinked(Event $event, $ids, $type) {
+    public function saveLinked(Event $event, $ids, $count) {
         $links = $this->getLinked();
         $rfk = $this->getRelatedForeignKey();
 
-        if (!$links || $type === Query::MULTI_INSERT) {
+        if (!$ids || !$links) {
             return;
         }
 

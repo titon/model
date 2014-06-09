@@ -369,6 +369,8 @@ class Model extends Entity implements Listener {
         // If the key being accessed points to a relation, either lazy load the data or return the cached data
         if ($this->hasRelation($key)) {
             $value = $this->getRelation($key)->getResults();
+
+            $this->set($key, $value);
         }
 
         return $value;
@@ -734,7 +736,7 @@ class Model extends Entity implements Listener {
     /**
      * {@inheritdoc}
      */
-    public function preDelete(Event $event, $id) {
+    public function preDelete(Event $event, Query $query, $id) {
         return true;
     }
 
@@ -748,7 +750,7 @@ class Model extends Entity implements Listener {
     /**
      * {@inheritdoc}
      */
-    public function preSave(Event $event, $id, array &$data, $type) {
+    public function preSave(Event $event, Query $query, $id, array &$data) {
         return true;
     }
 
@@ -768,7 +770,7 @@ class Model extends Entity implements Listener {
     /**
      * {@inheritdoc}
      */
-    public function postDelete(Event $event, $id) {
+    public function postDelete(Event $event, $id, $count) {
         return;
     }
 
@@ -782,7 +784,7 @@ class Model extends Entity implements Listener {
     /**
      * {@inheritdoc}
      */
-    public function postSave(Event $event, $id, $type) {
+    public function postSave(Event $event, $id, $count) {
         return;
     }
 

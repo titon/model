@@ -1,13 +1,33 @@
 <?php
 namespace Titon\Model;
 
+use Titon\Db\Entity;
+use Titon\Db\EntityCollection;
 use Titon\Db\Query;
+use Titon\Db\Repository;
+use Titon\Test\Stub\Model\Book;
+use Titon\Test\Stub\Model\Country;
+use Titon\Test\Stub\Model\Genre;
 use Titon\Test\Stub\Model\Profile;
+use Titon\Test\Stub\Model\Series;
 use Titon\Test\Stub\Model\Topic;
 use Titon\Test\Stub\Model\User;
 use Titon\Test\TestCase;
 
 class AbstractDbTest extends TestCase {
+
+    protected function tearDown() {
+        //$this->logQueries();
+
+        parent::tearDown();
+    }
+
+    /**
+     * Extremely useful for validating the correct queries and the number of queries being ran.
+     */
+    public function logQueries() {
+        print_r(array_map('strval', \Titon\Db\Database::registry()->getDriver('default')->getLoggedQueries()));
+    }
 
     public function testCreate() {
         $this->loadFixtures('Users');
@@ -37,6 +57,251 @@ class AbstractDbTest extends TestCase {
         ], User::find(6)->toArray());
     }
 
+    public function testCreateWithOneToOne() {
+        $this->loadFixtures(['Users', 'Profiles']);
+
+        $user = new User();
+        $user->country_id = 1;
+        $user->username = 'ironman';
+        $user->firstName = 'Tony';
+        $user->lastName = 'Stark';
+        $user->password = '7NAks9193KAkjs1';
+        $user->email = 'ironman@email.com';
+        $user->age = 38;
+
+        $profile = new Profile();
+        $profile->lastLogin = '2012-06-24 17:30:33';
+
+        $user->link($profile);
+
+        $this->assertEquals(6, $user->save(['validate' => false]));
+
+        $this->assertEquals(new User([
+            'id' => 6,
+            'country_id' => 1,
+            'username' => 'ironman',
+            'firstName' => 'Tony',
+            'lastName' => 'Stark',
+            'password' => '7NAks9193KAkjs1',
+            'email' => 'ironman@email.com',
+            'age' => 38,
+            'created' => '',
+            'modified' => '',
+            'Profile' => new Profile([
+                'id' => 6,
+                'user_id' => 6,
+                'lastLogin' => '2012-06-24 17:30:33',
+                'currentLogin' => ''
+            ])
+        ]), User::select()->where('id', 6)->with('Profile')->first());
+    }
+
+    public function testCreateWithOneToOneResetsPrevious() {
+        $this->loadFixtures(['Users', 'Profiles']);
+
+        $user = User::select()
+            ->with('Profile')
+            ->where('id', 1)
+            ->first();
+
+        $this->assertEquals(new User([
+            'id' => 1,
+            'country_id' => 1,
+            'username' => 'miles',
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson',
+            'password' => '1Z5895jf72yL77h',
+            'email' => 'miles@email.com',
+            'age' => 25,
+            'created' => '1988-02-26 21:22:34',
+            'modified' => null,
+            'Profile' => new Profile([
+                'id' => 4,
+                'user_id' => 1,
+                'lastLogin' => '2012-02-15 21:22:34',
+                'currentLogin' => '2013-06-06 19:11:03'
+            ])
+        ]), $user);
+
+        // Change profile
+        $profile = new Profile();
+        $profile->lastLogin = '2012-06-24 17:30:33';
+
+        $user->link($profile);
+
+        $this->assertEquals(1, $user->save(['validate' => false]));
+
+        $this->assertEquals(new User([
+            'id' => 1,
+            'country_id' => 1,
+            'username' => 'miles',
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson',
+            'password' => '1Z5895jf72yL77h',
+            'email' => 'miles@email.com',
+            'age' => 25,
+            'created' => '1988-02-26 21:22:34',
+            'modified' => null,
+            'Profile' => new Profile([
+                'id' => 6,
+                'user_id' => 1,
+                'lastLogin' => '2012-06-24 17:30:33',
+                'currentLogin' => ''
+            ])
+        ]), User::select()->with('Profile')->where('id', 1)->first());
+
+        $this->assertEquals(new Profile([
+            'id' => 4,
+            'user_id' => null,
+            'lastLogin' => '2012-02-15 21:22:34',
+            'currentLogin' => '2013-06-06 19:11:03'
+        ]), Profile::find(4));
+    }
+
+    public function testCreateWithOneToMany() {
+        $this->loadFixtures(['Series', 'Books']);
+
+        $series = new Series();
+        $series->name = 'A Series Of Unfortunate Events';
+        $series->linkMany([
+            new Book(['name' => 'The Bad Beginning']),
+            new Book(['name' => 'The Reptile Room']),
+            new Book(['name' => 'The Wide Window']),
+            new Book(['name' => 'The Miserable Mill']),
+            new Book(['name' => 'The Austere Academy']),
+            new Book(['name' => 'The Ersatz Elevator']),
+            new Book(['name' => 'The Vile Village'])
+        ]);
+
+        $this->assertEquals(4, $series->save(['validate' => false]));
+
+        $this->assertEquals(new Series([
+            'id' => 4,
+            'author_id' => 0,
+            'name' => 'A Series Of Unfortunate Events',
+            'Books' => new EntityCollection([
+                new Book(['id' => 16, 'series_id' => 4, 'name' => 'The Bad Beginning', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 17, 'series_id' => 4, 'name' => 'The Reptile Room', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 18, 'series_id' => 4, 'name' => 'The Wide Window', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 19, 'series_id' => 4, 'name' => 'The Miserable Mill', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 20, 'series_id' => 4, 'name' => 'The Austere Academy', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 21, 'series_id' => 4, 'name' => 'The Ersatz Elevator', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 22, 'series_id' => 4, 'name' => 'The Vile Village', 'isbn' => '', 'released' => '']),
+            ])
+        ]), Series::select()->with('Books')->where('id', 4)->first());
+
+        // Save more
+        $series->linkMany([
+            new Book(['name' => 'The Hostile Hospital']),
+            new Book(['name' => 'The Carnivorous Carnival']),
+            new Book(['name' => 'The Slippery Slope']),
+            new Book(['name' => 'The Grim Grotto']),
+            new Book(['name' => 'The Penultimate Peril']),
+            new Book(['name' => 'The End']),
+        ]);
+
+        $this->assertEquals(4, $series->save(['validate' => false]));
+
+        $this->assertEquals(new Series([
+            'id' => 4,
+            'author_id' => 0,
+            'name' => 'A Series Of Unfortunate Events',
+            'Books' => new EntityCollection([
+                new Book(['id' => 16, 'series_id' => 4, 'name' => 'The Bad Beginning', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 17, 'series_id' => 4, 'name' => 'The Reptile Room', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 18, 'series_id' => 4, 'name' => 'The Wide Window', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 19, 'series_id' => 4, 'name' => 'The Miserable Mill', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 20, 'series_id' => 4, 'name' => 'The Austere Academy', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 21, 'series_id' => 4, 'name' => 'The Ersatz Elevator', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 22, 'series_id' => 4, 'name' => 'The Vile Village', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 23, 'series_id' => 4, 'name' => 'The Hostile Hospital', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 24, 'series_id' => 4, 'name' => 'The Carnivorous Carnival', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 25, 'series_id' => 4, 'name' => 'The Slippery Slope', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 26, 'series_id' => 4, 'name' => 'The Grim Grotto', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 27, 'series_id' => 4, 'name' => 'The Penultimate Peril', 'isbn' => '', 'released' => '']),
+                new Book(['id' => 28, 'series_id' => 4, 'name' => 'The End', 'isbn' => '', 'released' => '']),
+            ])
+        ]), Series::select()->with('Books')->where('id', 4)->first());
+    }
+
+    public function testCreateWithManyToMany() {
+        $this->loadFixtures(['Genres', 'Books', 'BookGenres']);
+
+        $book = new Book();
+        $book->series_id = 1;
+        $book->name = 'The Winds of Winter';
+        $book->linkMany([
+            new Genre(['id' => 3, 'name' => 'Action-Adventure']), // Existing genre
+            new Genre(['name' => 'Epic-Horror']), // New genre
+        ]);
+
+        $this->assertEquals(16, $book->save(['validate' => false]));
+
+        $this->assertEquals(new Book([
+            'id' => 16,
+            'series_id' => 1,
+            'name' => 'The Winds of Winter',
+            'isbn' => '',
+            'released' => '',
+            'Genres' => new EntityCollection([
+                new Genre([
+                    'id' => 3,
+                    'name' => 'Action-Adventure',
+                    'book_count' => 8,
+                    'junction' => new Entity([
+                        'id' => 46,
+                        'book_id' => 16,
+                        'genre_id' => 3
+                    ])
+                ]),
+                new Genre([
+                    'id' => 12,
+                    'name' => 'Epic-Horror',
+                    'book_count' => 0,
+                    'junction' => new Entity([
+                        'id' => 47,
+                        'book_id' => 16,
+                        'genre_id' => 12
+                    ])
+                ])
+            ])
+        ]), Book::select()->with('Genres')->where('id', 16)->first());
+    }
+
+    public function testCreateWithManyToOne() {
+        $this->loadFixtures(['Series', 'Books']);
+
+        $series = Series::find(1);
+
+        $this->assertEquals(new Series([
+            'id' => 1,
+            'author_id' => 1,
+            'name' => 'A Song of Ice and Fire'
+        ]), $series);
+
+        // Change a value and see if it gets saved when the book does
+        $series->name = 'ASOFAI';
+
+        $book = new Book();
+        $book->name = 'The Winds of Winter';
+        $book->link($series);
+
+        $this->assertEquals(16, $book->save(['validate' => false]));
+
+        $this->assertEquals(new Book([
+            'id' => 16,
+            'series_id' => 1,
+            'name' => 'The Winds of Winter',
+            'isbn' => '',
+            'released' => '',
+            'Series' => new Series([
+                'id' => 1,
+                'author_id' => 1,
+                'name' => 'ASOFAI'
+            ])
+        ]), Book::select()->with('Series')->where('id', 16)->first());
+    }
+
     public function testDecrement() {
         $this->loadFixtures('Topics');
 
@@ -48,31 +313,208 @@ class AbstractDbTest extends TestCase {
     }
 
     public function testDelete() {
-        $this->loadFixtures('Users');
+        $this->loadFixtures(['Users', 'Profiles']);
 
         $user = User::find(1);
 
         $this->assertTrue($user->exists());
-        $this->assertSame(1, $user->delete());
+        $this->assertEquals(1, $user->delete());
+        $this->assertFalse($user->exists());
+
+        $user = User::find(1);
+
         $this->assertFalse($user->exists());
     }
 
-    public function testDeleteBy() {
-        $this->loadFixtures('Users');
+    public function testDeleteWithOneToOne() {
+        $this->loadFixtures(['Users', 'Profiles']);
 
-        $this->assertTrue(User::find(1)->exists());
+        $user = User::select()
+            ->with('Profile')
+            ->where('id', 1)
+            ->first();
 
-        $this->assertSame(1, User::deleteBy(1));
+        $this->assertEquals(new User([
+            'id' => 1,
+            'country_id' => 1,
+            'username' => 'miles',
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson',
+            'password' => '1Z5895jf72yL77h',
+            'email' => 'miles@email.com',
+            'age' => 25,
+            'created' => '1988-02-26 21:22:34',
+            'modified' => null,
+            'Profile' => new Profile([
+                'id' => 4,
+                'user_id' => 1,
+                'lastLogin' => '2012-02-15 21:22:34',
+                'currentLogin' => '2013-06-06 19:11:03'
+            ])
+        ]), $user);
 
-        $this->assertFalse(User::find(1)->exists());
+        $this->assertEquals(1, $user->delete());
+
+        $user = User::find(1);
+
+        $this->assertFalse($user->exists());
+
+        $profile = Profile::find(4);
+
+        $this->assertEquals(new Profile([
+            'id' => 4,
+            'user_id' => null,
+            'lastLogin' => '2012-02-15 21:22:34',
+            'currentLogin' => '2013-06-06 19:11:03'
+        ]), $profile);
     }
 
-    public function testDeleteMany() {
-        $this->loadFixtures('Users');
+    public function testDeleteWithOneToMany() {
+        $this->loadFixtures(['Series', 'Books']);
 
-        $this->assertEquals(3, User::deleteMany(function(Query $query) {
-            $query->where('age', '>', 30);
-        }));
+        $series = Series::select()
+            ->with('Books')
+            ->where('id', 1)
+            ->first();
+
+        $this->assertEquals(new Series([
+            'id' => 1,
+            'author_id' => 1,
+            'name' => 'A Song of Ice and Fire',
+            'Books' => new EntityCollection([
+                new Book(['id' => 1, 'series_id' => 1, 'name' => 'A Game of Thrones', 'isbn' => '0-553-10354-7', 'released' => '1996-08-02']),
+                new Book(['id' => 2, 'series_id' => 1, 'name' => 'A Clash of Kings', 'isbn' => '0-553-10803-4', 'released' => '1999-02-25']),
+                new Book(['id' => 3, 'series_id' => 1, 'name' => 'A Storm of Swords', 'isbn' => '0-553-10663-5', 'released' => '2000-11-11']),
+                new Book(['id' => 4, 'series_id' => 1, 'name' => 'A Feast for Crows', 'isbn' => '0-553-80150-3', 'released' => '2005-11-02']),
+                new Book(['id' => 5, 'series_id' => 1, 'name' => 'A Dance with Dragons', 'isbn' => '0-553-80147-3', 'released' => '2011-07-19']),
+            ])
+        ]), $series);
+
+        $this->assertEquals(1, $series->delete());
+
+        $series = Series::find(1);
+
+        $this->assertFalse($series->exists());
+
+        $books = Book::select()->where('series_id', null)->orderBy('id', 'asc')->all();
+
+        $this->assertEquals(new EntityCollection([
+            new Book(['id' => 1, 'series_id' => null, 'name' => 'A Game of Thrones', 'isbn' => '0-553-10354-7', 'released' => '1996-08-02']),
+            new Book(['id' => 2, 'series_id' => null, 'name' => 'A Clash of Kings', 'isbn' => '0-553-10803-4', 'released' => '1999-02-25']),
+            new Book(['id' => 3, 'series_id' => null, 'name' => 'A Storm of Swords', 'isbn' => '0-553-10663-5', 'released' => '2000-11-11']),
+            new Book(['id' => 4, 'series_id' => null, 'name' => 'A Feast for Crows', 'isbn' => '0-553-80150-3', 'released' => '2005-11-02']),
+            new Book(['id' => 5, 'series_id' => null, 'name' => 'A Dance with Dragons', 'isbn' => '0-553-80147-3', 'released' => '2011-07-19']),
+        ]), $books);
+    }
+
+    public function testDeleteWithManyToOne() {
+        $this->loadFixtures(['Users', 'Countries', 'Profiles']);
+
+        $user = User::select()
+            ->with('Country')
+            ->where('id', 1)
+            ->first();
+
+        $this->assertEquals(new User([
+            'id' => 1,
+            'country_id' => 1,
+            'username' => 'miles',
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson',
+            'password' => '1Z5895jf72yL77h',
+            'email' => 'miles@email.com',
+            'age' => 25,
+            'created' => '1988-02-26 21:22:34',
+            'modified' => null,
+            'Country' => new Country([
+                'id' => 1,
+                'name' => 'United States of America',
+                'iso' => 'USA'
+            ])
+        ]), $user);
+
+        $this->assertEquals(1, $user->delete());
+
+        $user = User::find(1);
+
+        $this->assertFalse($user->exists());
+
+        $country = Country::find(1);
+
+        $this->assertEquals(new Country([
+            'id' => 1,
+            'name' => 'United States of America',
+            'iso' => 'USA'
+        ]), $country);
+    }
+
+    public function testDeleteWithManyToMany() {
+        $this->loadFixtures(['Books', 'Genres', 'BookGenres']);
+
+        $book = Book::select()
+            ->where('id', 5)
+            ->with('Genres')
+            ->first();
+
+        $this->assertEquals(new Book([
+            'id' => 5,
+            'series_id' => 1,
+            'name' => 'A Dance with Dragons',
+            'isbn' => '0-553-80147-3',
+            'released' => '2011-07-19',
+            'Genres' => new EntityCollection([
+                new Genre([
+                    'id' => 3,
+                    'name' => 'Action-Adventure',
+                    'book_count' => 8,
+                    'junction' => new Entity([
+                        'id' => 14,
+                        'book_id' => 5,
+                        'genre_id' => 3
+                    ])
+                ]),
+                new Genre([
+                    'id' => 5,
+                    'name' => 'Horror',
+                    'book_count' => 5,
+                    'junction' => new Entity([
+                        'id' => 15,
+                        'book_id' => 5,
+                        'genre_id' => 5
+                    ])
+                ]),
+                new Genre([
+                    'id' => 8,
+                    'name' => 'Fantasy',
+                    'book_count' => 15,
+                    'junction' => new Entity([
+                        'id' => 13,
+                        'book_id' => 5,
+                        'genre_id' => 8
+                    ])
+                ]),
+            ])
+        ]), $book);
+
+        $this->assertEquals(1, $book->delete());
+
+        $book = Book::find(5);
+
+        $this->assertFalse($book->exists());
+
+        // Related record is not deleted
+        $genre = Genre::find(3);
+
+        $this->assertEquals(new Genre([
+            'id' => 3,
+            'name' => 'Action-Adventure',
+            'book_count' => 8
+        ]), $genre);
+
+        // Junction records are deleted
+        $repo = new Repository(['table' => 'books_genres']);
+
+        $this->assertEquals(0, $repo->select()->where('book_id', 5)->count());
     }
 
     public function testFind() {
@@ -87,7 +529,7 @@ class AbstractDbTest extends TestCase {
         $this->assertTrue($user1->exists());
         $this->assertFalse($user2->exists());
 
-        $this->assertEquals([
+        $this->assertEquals(new User([
             'id' => 1,
             'country_id' => 1,
             'username' => 'miles',
@@ -98,7 +540,7 @@ class AbstractDbTest extends TestCase {
             'age' => 25,
             'created' => '1988-02-26 21:22:34',
             'modified' => null
-        ], $user1->toArray());
+        ]), $user1);
 
         $this->assertEquals([], $user2->toArray());
     }
@@ -113,81 +555,412 @@ class AbstractDbTest extends TestCase {
         $this->assertEquals(new Topic(['post_count' => 7]), Topic::select('post_count')->where('id', 1)->first());
     }
 
-    public function testInsert() {
-        $this->loadFixtures('Users');
+    public function testReadSingleWithOneToOne() {
+        $this->loadFixtures(['Users', 'Profiles']);
 
-        $last_id = User::insert([
-            'country_id' => 1,
-            'username' => 'ironman',
-            'firstName' => 'Tony',
-            'lastName' => 'Stark',
-            'password' => '7NAks9193KAkjs1',
-            'email' => 'ironman@email.com',
-            'age' => 38
-        ]);
+        $actual = User::select()
+            ->with('Profile')
+            ->where('id', 1)
+            ->first();
 
-        $this->assertEquals(6, $last_id);
-
-        $this->assertEquals([
-            'id' => 6,
-            'country_id' => 1,
-            'username' => 'ironman',
-            'password' => '7NAks9193KAkjs1',
-            'email' => 'ironman@email.com',
-            'firstName' => 'Tony',
-            'lastName' => 'Stark',
-            'age' => 38,
-            'created' => null,
-            'modified' => null
-        ], User::find($last_id)->toArray());
-    }
-
-    public function testInsertMany() {
-        $this->loadFixtures('Users');
-
-        User::truncate(); // Empty first
-
-        $this->assertEquals(0, User::total());
-
-        $this->assertEquals(5, User::insertMany([
-            ['country_id' => 1, 'username' => 'miles', 'firstName' => 'Miles', 'lastName' => 'Johnson', 'password' => '1Z5895jf72yL77h', 'email' => 'miles@email.com', 'age' => 25, 'created' => '1988-02-26 21:22:34'],
-            ['country_id' => 3, 'username' => 'batman', 'firstName' => 'Bruce', 'lastName' => 'Wayne', 'created' => '1960-05-11 21:22:34'],
-            ['country_id' => 2, 'username' => 'superman', 'email' => 'superman@email.com', 'age' => 33, 'created' => '1970-09-18 21:22:34'],
-            ['country_id' => 5, 'username' => 'spiderman', 'firstName' => 'Peter', 'lastName' => 'Parker', 'password' => '1Z5895jf72yL77h', 'email' => 'spiderman@email.com', 'age' => 22, 'created' => '1990-01-05 21:22:34'],
-            ['country_id' => 4, 'username' => 'wolverine', 'password' => '1Z5895jf72yL77h', 'email' => 'wolverine@email.com'],
-        ]));
-
-        $this->assertEquals(5, User::total());
-    }
-
-    public function testUpdateBy() {
-        $this->loadFixtures('Users');
-
-        $this->assertEquals(1, User::updateBy(1, [
-            'country_id' => 3,
-            'username' => 'milesj'
-        ]));
-
-        $this->assertEquals([
+        $this->assertEquals(new User([
             'id' => 1,
-            'country_id' => 3,
-            'username' => 'milesj',
-            'password' => '1Z5895jf72yL77h',
-            'email' => 'miles@email.com',
+            'country_id' => 1,
+            'username' => 'miles',
             'firstName' => 'Miles',
             'lastName' => 'Johnson',
+            'password' => '1Z5895jf72yL77h',
+            'email' => 'miles@email.com',
             'age' => 25,
             'created' => '1988-02-26 21:22:34',
-            'modified' => null
-        ], User::find(1)->toArray());
+            'modified' => null,
+            'Profile' => new Profile([
+                'id' => 4,
+                'user_id' => 1,
+                'lastLogin' => '2012-02-15 21:22:34',
+                'currentLogin' => '2013-06-06 19:11:03'
+            ])
+        ]), $actual);
     }
 
-    public function testUpdateMany() {
-        $this->loadFixtures('Users');
+    public function testReadMultipleWithOneToOne() {
+        $this->loadFixtures(['Users', 'Profiles']);
 
-        $this->assertEquals(3, User::updateMany(['country_id' => null], function(Query $query) {
-            $query->where('age', '>', 30);
-        }));
+        $actual = User::select()
+            ->fields('id', 'username')
+            ->with('Profile', function(Query $query) {
+                $query->fields('id', 'user_id');
+            })
+            ->orderBy('id', 'asc')
+            ->all();
+
+        $this->assertEquals(new EntityCollection([
+             new User([
+                'id' => 1,
+                'username' => 'miles',
+                'Profile' => new Profile([
+                    'id' => 4,
+                    'user_id' => 1
+                ])
+            ]),
+            new User([
+                'id' => 2,
+                'username' => 'batman',
+                'Profile' => new Profile([
+                    'id' => 5,
+                    'user_id' => 2
+                ])
+            ]),
+            new User([
+                'id' => 3,
+                'username' => 'superman',
+                'Profile' => new Profile([
+                    'id' => 2,
+                    'user_id' => 3
+                ])
+            ]),
+            new User([
+                'id' => 4,
+                'username' => 'spiderman',
+                'Profile' => new Profile([
+                    'id' => 1,
+                    'user_id' => 4
+                ])
+            ]),
+            new User([
+                'id' => 5,
+                'username' => 'wolverine',
+                'Profile' => new Profile([
+                    'id' => 3,
+                    'user_id' => 5
+                ])
+            ])
+        ]), $actual);
+    }
+
+    public function testReadSingleWithOneToMany() {
+        $this->loadFixtures(['Books', 'Series']);
+
+        $actual = Series::select()
+            ->with('Books')
+            ->where('id', 1)
+            ->first();
+
+        $this->assertEquals(new Series([
+            'id' => 1,
+            'author_id' => 1,
+            'name' => 'A Song of Ice and Fire',
+            'Books' => new EntityCollection([
+                new Book(['id' => 1, 'series_id' => 1, 'name' => 'A Game of Thrones', 'isbn' => '0-553-10354-7', 'released' => '1996-08-02']),
+                new Book(['id' => 2, 'series_id' => 1, 'name' => 'A Clash of Kings', 'isbn' => '0-553-10803-4', 'released' => '1999-02-25']),
+                new Book(['id' => 3, 'series_id' => 1, 'name' => 'A Storm of Swords', 'isbn' => '0-553-10663-5', 'released' => '2000-11-11']),
+                new Book(['id' => 4, 'series_id' => 1, 'name' => 'A Feast for Crows', 'isbn' => '0-553-80150-3', 'released' => '2005-11-02']),
+                new Book(['id' => 5, 'series_id' => 1, 'name' => 'A Dance with Dragons', 'isbn' => '0-553-80147-3', 'released' => '2011-07-19']),
+            ])
+        ]), $actual);
+    }
+
+    public function testReadMultipleWithOneToMany() {
+        $this->loadFixtures(['Books', 'Series']);
+
+        $actual = Series::select()
+            ->with('Books')
+            ->where('id', [1, 3])
+            ->orderBy('id', 'asc')
+            ->all();
+
+        $this->assertEquals(new EntityCollection([
+             new Series([
+                'id' => 1,
+                'author_id' => 1,
+                'name' => 'A Song of Ice and Fire',
+                'Books' => new EntityCollection([
+                    new Book(['id' => 1, 'series_id' => 1, 'name' => 'A Game of Thrones', 'isbn' => '0-553-10354-7', 'released' => '1996-08-02']),
+                    new Book(['id' => 2, 'series_id' => 1, 'name' => 'A Clash of Kings', 'isbn' => '0-553-10803-4', 'released' => '1999-02-25']),
+                    new Book(['id' => 3, 'series_id' => 1, 'name' => 'A Storm of Swords', 'isbn' => '0-553-10663-5', 'released' => '2000-11-11']),
+                    new Book(['id' => 4, 'series_id' => 1, 'name' => 'A Feast for Crows', 'isbn' => '0-553-80150-3', 'released' => '2005-11-02']),
+                    new Book(['id' => 5, 'series_id' => 1, 'name' => 'A Dance with Dragons', 'isbn' => '0-553-80147-3', 'released' => '2011-07-19']),
+                ])
+            ]),
+            new Series([
+                'id' => 3,
+                'author_id' => 3,
+                'name' => 'The Lord of the Rings',
+                'Books' => new EntityCollection([
+                    new Book(['id' => 13, 'series_id' => 3, 'name' => 'The Fellowship of the Ring', 'isbn' => '', 'released' => '1954-07-24']),
+                    new Book(['id' => 14, 'series_id' => 3, 'name' => 'The Two Towers', 'isbn' => '', 'released' => '1954-11-11']),
+                    new Book(['id' => 15, 'series_id' => 3, 'name' => 'The Return of the King', 'isbn' => '', 'released' => '1955-10-25']),
+                ])
+            ])
+        ]), $actual);
+    }
+
+    public function testReadSingleWithManyToOne() {
+        $this->loadFixtures(['Users', 'Countries']);
+
+        $actual = User::select()
+            ->with('Country')
+            ->where('id', 1)
+            ->first();
+
+        $this->assertEquals(new User([
+            'id' => 1,
+            'country_id' => 1,
+            'username' => 'miles',
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson',
+            'password' => '1Z5895jf72yL77h',
+            'email' => 'miles@email.com',
+            'age' => 25,
+            'created' => '1988-02-26 21:22:34',
+            'modified' => null,
+            'Country' => new Country([
+                'id' => 1,
+                'name' => 'United States of America',
+                'iso' => 'USA'
+            ])
+        ]), $actual);
+    }
+
+    public function testReadMultipleWithManyToOne() {
+        $this->loadFixtures(['Users', 'Countries']);
+
+        $actual = User::select()
+            ->fields('id', 'username')
+            ->with('Country')
+            ->orderBy('id', 'asc')
+            ->all();
+
+        $this->assertEquals(new EntityCollection([
+             new User([
+                'id' => 1,
+                'username' => 'miles',
+                'country_id' => 1,
+                'Country' => new Country([
+                    'id' => 1,
+                    'name' => 'United States of America',
+                    'iso' => 'USA'
+                ])
+            ]),
+            new User([
+                'id' => 2,
+                'username' => 'batman',
+                'country_id' => 3,
+                'Country' => new Country([
+                    'id' => 3,
+                    'name' => 'England',
+                    'iso' => 'ENG'
+                ])
+            ]),
+            new User([
+                'id' => 3,
+                'username' => 'superman',
+                'country_id' => 2,
+                'Country' => new Country([
+                    'id' => 2,
+                    'name' => 'Canada',
+                    'iso' => 'CAN'
+                ])
+            ]),
+            new User([
+                'id' => 4,
+                'username' => 'spiderman',
+                'country_id' => 5,
+                'Country' => new Country([
+                    'id' => 5,
+                    'name' => 'Mexico',
+                    'iso' => 'MEX'
+                ])
+            ]),
+            new User([
+                'id' => 5,
+                'username' => 'wolverine',
+                'country_id' => 4,
+                'Country' => new Country([
+                    'id' => 4,
+                    'name' => 'Australia',
+                    'iso' => 'AUS'
+                ])
+            ])
+        ]), $actual);
+    }
+
+    public function testReadSingleWithManyToMany() {
+        $this->loadFixtures(['Books', 'Genres', 'BookGenres']);
+
+        $actual = Book::select()
+            ->where('id', 5)
+            ->with('Genres')
+            ->first();
+
+        $this->assertEquals(new Book([
+            'id' => 5,
+            'series_id' => 1,
+            'name' => 'A Dance with Dragons',
+            'isbn' => '0-553-80147-3',
+            'released' => '2011-07-19',
+            'Genres' => new EntityCollection([
+                new Genre([
+                    'id' => 3,
+                    'name' => 'Action-Adventure',
+                    'book_count' => 8,
+                    'junction' => new Entity([
+                        'id' => 14,
+                        'book_id' => 5,
+                        'genre_id' => 3
+                    ])
+                ]),
+                new Genre([
+                    'id' => 5,
+                    'name' => 'Horror',
+                    'book_count' => 5,
+                    'junction' => new Entity([
+                        'id' => 15,
+                        'book_id' => 5,
+                        'genre_id' => 5
+                    ])
+                ]),
+                new Genre([
+                    'id' => 8,
+                    'name' => 'Fantasy',
+                    'book_count' => 15,
+                    'junction' => new Entity([
+                        'id' => 13,
+                        'book_id' => 5,
+                        'genre_id' => 8
+                    ])
+                ]),
+            ])
+        ]), $actual);
+    }
+
+    public function testReadMultipleWithManyToMany() {
+        $this->loadFixtures(['Books', 'Genres', 'BookGenres']);
+
+        $actual = Book::select()
+            ->where('series_id', 3)
+            ->with('Genres')
+            ->all();
+
+        $this->assertEquals(new EntityCollection([
+            new Book([
+                'id' => 13,
+                'series_id' => 3,
+                'name' => 'The Fellowship of the Ring',
+                'isbn' => '',
+                'released' => '1954-07-24',
+                'Genres' => new EntityCollection([
+                    new Genre([
+                        'id' => 3,
+                        'name' => 'Action-Adventure',
+                        'book_count' => 8,
+                        'junction' => new Entity([
+                            'id' => 38,
+                            'book_id' => 13,
+                            'genre_id' => 3
+                        ])
+                    ]),
+                    new Genre([
+                        'id' => 6,
+                        'name' => 'Thriller',
+                        'book_count' => 3,
+                        'junction' => new Entity([
+                            'id' => 39,
+                            'book_id' => 13,
+                            'genre_id' => 6
+                        ])
+                    ]),
+                    new Genre([
+                        'id' => 8,
+                        'name' => 'Fantasy',
+                        'book_count' => 15,
+                        'junction' => new Entity([
+                            'id' => 37,
+                            'book_id' => 13,
+                            'genre_id' => 8
+                        ])
+                    ]),
+                ])
+            ]),
+            new Book([
+                'id' => 14,
+                'series_id' => 3,
+                'name' => 'The Two Towers',
+                'isbn' => '',
+                'released' => '1954-11-11',
+                'Genres' => new EntityCollection([
+                    new Genre([
+                        'id' => 3,
+                        'name' => 'Action-Adventure',
+                        'book_count' => 8,
+                        'junction' => new Entity([
+                            'id' => 41,
+                            'book_id' => 14,
+                            'genre_id' => 3
+                        ])
+                    ]),
+                    new Genre([
+                        'id' => 6,
+                        'name' => 'Thriller',
+                        'book_count' => 3,
+                        'junction' => new Entity([
+                            'id' => 42,
+                            'book_id' => 14,
+                            'genre_id' => 6
+                        ])
+                    ]),
+                    new Genre([
+                        'id' => 8,
+                        'name' => 'Fantasy',
+                        'book_count' => 15,
+                        'junction' => new Entity([
+                            'id' => 40,
+                            'book_id' => 14,
+                            'genre_id' => 8
+                        ])
+                    ]),
+                ])
+            ]),
+            new Book([
+                'id' => 15,
+                'series_id' => 3,
+                'name' => 'The Return of the King',
+                'isbn' => '',
+                'released' => '1955-10-25',
+                'Genres' => new EntityCollection([
+                    new Genre([
+                        'id' => 3,
+                        'name' => 'Action-Adventure',
+                        'book_count' => 8,
+                        'junction' => new Entity([
+                            'id' => 44,
+                            'book_id' => 15,
+                            'genre_id' => 3
+                        ])
+                    ]),
+                    new Genre([
+                        'id' => 6,
+                        'name' => 'Thriller',
+                        'book_count' => 3,
+                        'junction' => new Entity([
+                            'id' => 45,
+                            'book_id' => 15,
+                            'genre_id' => 6
+                        ])
+                    ]),
+                    new Genre([
+                        'id' => 8,
+                        'name' => 'Fantasy',
+                        'book_count' => 15,
+                        'junction' => new Entity([
+                            'id' => 43,
+                            'book_id' => 15,
+                            'genre_id' => 8
+                        ])
+                    ]),
+                ])
+            ]),
+        ]), $actual);
     }
 
 }
