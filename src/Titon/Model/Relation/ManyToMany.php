@@ -57,6 +57,49 @@ class ManyToMany extends Relation {
     }
 
     /**
+     * {@inheritdoc}
+     */
+    public function fetchRelation() {
+        $id = $this->getPrimaryModel()->id();
+
+        if (!$id) {
+            return null;
+        }
+
+        // Get junction records first
+        $junctionResults = $this->getJunctionRepository()
+            ->select()
+            ->where($this->getPrimaryForeignKey(), $id)
+            ->all();
+
+        if ($junctionResults->isEmpty()) {
+            return $junctionResults;
+        }
+
+        $rfk = $this->getRelatedForeignKey();
+        $groupedResults = $junctionResults->groupBy($rfk);
+
+        // Get the related records
+        $relatedModel = $this->getRelatedModel();
+        $results = $relatedModel->getRepository()
+            ->select()
+            ->where($relatedModel->getPrimaryKey(), array_keys($groupedResults))
+            ->bindCallback($this->getConditions())
+            ->all();
+
+        if ($results->isEmpty()) {
+            return $results;
+        }
+
+        // Merge the junction records into the main results
+        foreach ($results as $result) {
+            $result['junction'] = $groupedResults[$result->id()][0];
+        }
+
+        return $results;
+    }
+
+    /**
      * Return the junction table name.
      *
      * @return string
@@ -92,51 +135,6 @@ class ManyToMany extends Relation {
      */
     public function getRelatedForeignKey() {
         return $this->detectForeignKey('relatedForeignKey', $this->getRelatedClass());
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function getResults() {
-        if ($this->_results) {
-            return $this->_results;
-        }
-
-        $id = $this->getPrimaryModel()->id();
-
-        if (!$id) {
-            return null;
-        }
-
-        // Get junction records first
-        $junctionResults = $this->getJunctionRepository()
-            ->select()
-            ->where($this->getPrimaryForeignKey(), $id)
-            ->all();
-
-        if ($junctionResults->isEmpty()) {
-            return $this->_results = $junctionResults;
-        }
-
-        // Get the related records
-        $relatedModel = $this->getRelatedModel();
-        $results = $relatedModel->getRepository()
-            ->select()
-            ->where($relatedModel->getPrimaryKey(), $junctionResults->pluck($this->getRelatedForeignKey()))
-            ->bindCallback($this->getConditions())
-            ->all();
-
-        if ($results->isEmpty()) {
-            return $this->_results = $results;
-        }
-
-        // Merge the junction records into the main results
-        /** @type \Titon\Model\Model $result */
-        foreach ($results as $result) {
-            $result->set('junction', $junctionResults->find($result->id(), $this->getRelatedForeignKey()));
-        }
-
-        return $this->_results = $results;
     }
 
     /**

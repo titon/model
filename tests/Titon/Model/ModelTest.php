@@ -36,6 +36,7 @@ class ModelTest extends TestCase {
         $this->object->addRelation(new OneToMany('Post', 'Titon\Test\Stub\Model\Post'));
 
         $this->assertTrue($this->object->hasRelation('Post'));
+        $this->assertTrue($this->object->hasRelations());
     }
 
     public function testBelongsTo() {
@@ -89,11 +90,12 @@ class ModelTest extends TestCase {
         $this->assertEquals(['username' => 'batman'], $this->object->toArray());
     }
 
+    /**
+     * @expectedException \Titon\Model\Exception\MassAssignmentException
+     */
     public function testFillFullyGuarded() {
         $profile = new Profile();
         $profile->fill(['user_id' => 4, 'lastLogin' => '2012-02-03 21:22:34', 'currentLogin' => '2013-06-06 19:11:03']);
-
-        $this->assertEquals([], $profile->toArray());
     }
 
     public function testGet() {
@@ -124,6 +126,10 @@ class ModelTest extends TestCase {
         ], $user->toArray());
 
         $this->assertEquals('Miles Johnson', $user->fullName);
+    }
+
+    public function testGetDisplayField() {
+        $this->assertEquals(['title', 'name', 'id'], $this->object->getDisplayField());
     }
 
     public function testGetRepository() {
@@ -161,6 +167,14 @@ class ModelTest extends TestCase {
         ], $this->object->getRelations(Relation::MANY_TO_ONE));
     }
 
+    public function testGetTable() {
+        $this->assertEquals('users', $this->object->getTable());
+    }
+
+    public function testGetTablePrefix() {
+        $this->assertEquals('', $this->object->getTablePrefix());
+    }
+
     public function testGetValidator() {
         $validator = new Validator();
         $validator->addField('username', 'username', [
@@ -188,7 +202,7 @@ class ModelTest extends TestCase {
     public function testHasOne() {
         $conditions = function() {};
 
-        $this->object->hasOne('Profile', 'Titon\Test\Stub\Model\Profile', 'user_fk', false, $conditions);
+        $this->object->hasOne('Profile', 'Titon\Test\Stub\Model\Profile', 'user_fk', $conditions);
 
         $relation = $this->object->getRelation('Profile');
 
@@ -196,14 +210,13 @@ class ModelTest extends TestCase {
         $this->assertEquals('Titon\Test\Stub\Model\Profile', $relation->getRelatedClass());
         $this->assertEquals('user_fk', $relation->getRelatedForeignKey());
         $this->assertEquals(Relation::ONE_TO_ONE, $relation->getType());
-        $this->assertFalse($relation->isDependent());
         $this->assertSame($conditions, $relation->getConditions());
     }
 
     public function testHasMany() {
         $conditions = function() {};
 
-        $this->object->hasMany('Posts', 'Titon\Test\Stub\Model\Post', 'user_fk', false, $conditions);
+        $this->object->hasMany('Posts', 'Titon\Test\Stub\Model\Post', 'user_fk', $conditions);
 
         $relation = $this->object->getRelation('Posts');
 
@@ -211,8 +224,15 @@ class ModelTest extends TestCase {
         $this->assertEquals('Titon\Test\Stub\Model\Post', $relation->getRelatedClass());
         $this->assertEquals('user_fk', $relation->getRelatedForeignKey());
         $this->assertEquals(Relation::ONE_TO_MANY, $relation->getType());
-        $this->assertFalse($relation->isDependent());
         $this->assertSame($conditions, $relation->getConditions());
+    }
+
+    public function testId() {
+        $this->assertEquals(null, $this->object->id());
+
+        $this->object->id = 123;
+
+        $this->assertEquals(123, $this->object->id());
     }
 
     public function testIsFillable() {
@@ -261,9 +281,9 @@ class ModelTest extends TestCase {
         $this->assertEquals([
             'Country' => (new ManyToOne('Country', 'Titon\Test\Stub\Model\Country'))->setPrimaryModel($model)->setPrimaryForeignKey(null)->setConditions($conditions),
             'Roles' => (new ManyToMany('Roles', 'Titon\Test\Stub\Model\Role'))->setPrimaryModel($model)->setPrimaryForeignKey('user_fk')->setRelatedForeignKey(null)->setJunction('user_roles'),
-            'Profile' => (new OneToOne('Profile', 'Titon\Test\Stub\Model\Profile'))->setPrimaryModel($model)->setRelatedForeignKey(null)->setDependent(true),
-            'Topics' => (new OneToMany('Topics', 'Titon\Test\Stub\Model\Topic'))->setPrimaryModel($model)->setRelatedForeignKey(null)->setDependent(true),
-            'Posts' => (new OneToMany('Posts', 'Titon\Test\Stub\Model\Post'))->setPrimaryModel($model)->setRelatedForeignKey('user_fk')->setDependent(true),
+            'Profile' => (new OneToOne('Profile', 'Titon\Test\Stub\Model\Profile'))->setPrimaryModel($model)->setRelatedForeignKey(null),
+            'Topics' => (new OneToMany('Topics', 'Titon\Test\Stub\Model\Topic'))->setPrimaryModel($model)->setRelatedForeignKey(null),
+            'Posts' => (new OneToMany('Posts', 'Titon\Test\Stub\Model\Post'))->setPrimaryModel($model)->setRelatedForeignKey('user_fk'),
         ], $relations);
     }
 

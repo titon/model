@@ -36,26 +36,27 @@ class ManyToOne extends Relation {
     /**
      * {@inheritdoc}
      */
-    public function getPrimaryForeignKey() {
-        return $this->detectForeignKey('foreignKey', $this->getRelatedClass());
+    public function fetchRelation() {
+        $foreignID = $this->getPrimaryModel()->get($this->getPrimaryForeignKey());
+
+        if (!$foreignID) {
+            return null;
+        }
+
+        $relatedModel = $this->getRelatedModel();
+
+        return $relatedModel
+            ->select()
+            ->where($relatedModel->getPrimaryKey(), $foreignID)
+            ->bindCallback($this->getConditions())
+            ->first();
     }
 
     /**
      * {@inheritdoc}
      */
-    public function getResults() {
-        if ($this->_results) {
-            return $this->_results;
-        }
-
-        $foreignKey = $this->getPrimaryModel()->get($this->getPrimaryForeignKey());
-
-        if (!$foreignKey) {
-            return null;
-        }
-
-        return $this->_results = $this->getRelatedModel()->getRepository()
-            ->read($foreignKey, [], $this->getConditions());
+    public function getPrimaryForeignKey() {
+        return $this->detectForeignKey('foreignKey', $this->getRelatedClass());
     }
 
     /**

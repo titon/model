@@ -517,6 +517,132 @@ class AbstractDbTest extends TestCase {
         $this->assertEquals(0, $repo->select()->where('book_id', 5)->count());
     }
 
+    public function testFetchWithOneToOne() {
+        $this->loadFixtures(['Users', 'Profiles']);
+
+        $user = User::find(1);
+
+        $this->assertEquals(new User([
+            'id' => 1,
+            'country_id' => 1,
+            'username' => 'miles',
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson',
+            'password' => '1Z5895jf72yL77h',
+            'email' => 'miles@email.com',
+            'age' => 25,
+            'created' => '1988-02-26 21:22:34',
+            'modified' => null
+        ]), $user);
+
+        $profile = $user->Profile;
+
+        $this->assertEquals(new Profile([
+            'id' => 4,
+            'user_id' => 1,
+            'lastLogin' => '2012-02-15 21:22:34',
+            'currentLogin' => '2013-06-06 19:11:03'
+        ]), $profile);
+    }
+
+    public function testFetchWithOneToMany() {
+        $this->loadFixtures(['Books', 'Series']);
+
+        $series = Series::find(1);
+
+        $this->assertEquals(new Series([
+            'id' => 1,
+            'author_id' => 1,
+            'name' => 'A Song of Ice and Fire'
+        ]), $series);
+
+        $books = $series->Books;
+
+        $this->assertEquals(new EntityCollection([
+            new Book(['id' => 1, 'series_id' => 1, 'name' => 'A Game of Thrones', 'isbn' => '0-553-10354-7', 'released' => '1996-08-02']),
+            new Book(['id' => 2, 'series_id' => 1, 'name' => 'A Clash of Kings', 'isbn' => '0-553-10803-4', 'released' => '1999-02-25']),
+            new Book(['id' => 3, 'series_id' => 1, 'name' => 'A Storm of Swords', 'isbn' => '0-553-10663-5', 'released' => '2000-11-11']),
+            new Book(['id' => 4, 'series_id' => 1, 'name' => 'A Feast for Crows', 'isbn' => '0-553-80150-3', 'released' => '2005-11-02']),
+            new Book(['id' => 5, 'series_id' => 1, 'name' => 'A Dance with Dragons', 'isbn' => '0-553-80147-3', 'released' => '2011-07-19']),
+        ]), $books);
+    }
+
+    public function testFetchWithManyToOne() {
+        $this->loadFixtures(['Users', 'Countries']);
+
+        $user = User::find(1);
+
+        $this->assertEquals(new User([
+            'id' => 1,
+            'country_id' => 1,
+            'username' => 'miles',
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson',
+            'password' => '1Z5895jf72yL77h',
+            'email' => 'miles@email.com',
+            'age' => 25,
+            'created' => '1988-02-26 21:22:34',
+            'modified' => null
+        ]), $user);
+
+        $country = $user->Country;
+
+        $this->assertEquals(new Country([
+            'id' => 1,
+            'name' => 'United States of America',
+            'iso' => 'USA'
+        ]), $country);
+    }
+
+    public function testFetchWithManyToMany() {
+        $this->loadFixtures(['Books', 'Genres', 'BookGenres']);
+
+        $book = Book::find(5);
+
+        $this->assertEquals(new Book([
+            'id' => 5,
+            'series_id' => 1,
+            'name' => 'A Dance with Dragons',
+            'isbn' => '0-553-80147-3',
+            'released' => '2011-07-19'
+        ]), $book);
+
+        $genres = $book->Genres;
+
+        $this->assertEquals(new EntityCollection([
+            new Genre([
+                'id' => 3,
+                'name' => 'Action-Adventure',
+                'book_count' => 8,
+                'junction' => new Entity([
+                    'id' => 14,
+                    'book_id' => 5,
+                    'genre_id' => 3
+                ])
+            ]),
+            new Genre([
+                'id' => 5,
+                'name' => 'Horror',
+                'book_count' => 5,
+                'junction' => new Entity([
+                    'id' => 15,
+                    'book_id' => 5,
+                    'genre_id' => 5
+                ])
+            ]),
+            new Genre([
+                'id' => 8,
+                'name' => 'Fantasy',
+                'book_count' => 15,
+                'junction' => new Entity([
+                    'id' => 13,
+                    'book_id' => 5,
+                    'genre_id' => 8
+                ])
+            ]),
+        ]), $genres);
+    }
+
     public function testFind() {
         $this->loadFixtures('Users');
 

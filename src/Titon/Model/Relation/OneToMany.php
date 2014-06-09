@@ -41,29 +41,25 @@ class OneToMany extends Relation {
     /**
      * {@inheritdoc}
      */
-    public function getRelatedForeignKey() {
-        return $this->detectForeignKey('relatedForeignKey', $this->getPrimaryClass());
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function getResults() {
-        if ($this->_results) {
-            return $this->_results;
-        }
-
+    public function fetchRelation() {
         $id = $this->getPrimaryModel()->id();
 
         if (!$id) {
             return null;
         }
 
-        return $this->_results = $this->getRelatedModel()->getRepository()
+        return $this->getRelatedModel()
             ->select()
             ->where($this->getRelatedForeignKey(), $id)
             ->bindCallback($this->getConditions())
             ->all();
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getRelatedForeignKey() {
+        return $this->detectForeignKey('relatedForeignKey', $this->getPrimaryClass());
     }
 
     /**

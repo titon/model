@@ -42,31 +42,25 @@ class OneToOne extends Relation {
     /**
      * {@inheritdoc}
      */
-    public function getRelatedForeignKey() {
-        return $this->detectForeignKey('relatedForeignKey', $this->getPrimaryClass());
-    }
-
-    /**
-     * {@inheritdoc}
-     *
-     * @return \Titon\Model\Model
-     */
-    public function getResults() {
-        if ($this->_results) {
-            return $this->_results;
-        }
-
+    public function fetchRelation() {
         $id = $this->getPrimaryModel()->id();
 
         if (!$id) {
             return null;
         }
 
-        return $this->_results = $this->getRelatedModel()
+        return $this->getRelatedModel()
             ->select()
             ->where($this->getRelatedForeignKey(), $id)
             ->bindCallback($this->getConditions())
             ->first();
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getRelatedForeignKey() {
+        return $this->detectForeignKey('relatedForeignKey', $this->getPrimaryClass());
     }
 
     /**

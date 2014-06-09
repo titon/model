@@ -354,23 +354,22 @@ class Model extends Entity implements Listener {
      * {@inheritdoc}
      */
     public function get($key, $default = null) {
-        $value = $default;
+        $value = null;
 
         // If the key already exists in the attribute list, return it immediately
-        // If an accessor has been defined, run the value through the accessor before returning
         if ($this->has($key)) {
             $value = parent::get($key, $default);
-
-            if ($method = $this->hasAccessor($key)) {
-                $value = $this->{$method}($value);
-            }
         }
 
         // If the key being accessed points to a relation, either lazy load the data or return the cached data
-        if ($this->hasRelation($key)) {
-            $value = $this->getRelation($key)->getResults();
+        if (!$value && $this->hasRelation($key)) {
+            $value = $this->getRelation($key)->fetchRelation();
 
             $this->set($key, $value);
+
+        // If an accessor has been defined, run the value through the accessor before returning
+        } else if ($method = $this->hasAccessor($key)) {
+            $value = $this->{$method}($value);
         }
 
         return $value;
@@ -588,7 +587,7 @@ class Model extends Entity implements Listener {
      * @return bool
      */
     public function hasRelations() {
-        return (count($this->_relations) > 0);
+        return !empty($this->_relations);
     }
 
     /**

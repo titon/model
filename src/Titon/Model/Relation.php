@@ -83,13 +83,6 @@ abstract class Relation extends Base implements Listener {
     protected $_relatedModel;
 
     /**
-     * Cached query result for `getResults()`.
-     *
-     * @type \Titon\Db\Entity|\Titon\Db\EntityCollection
-     */
-    protected $_results;
-
-    /**
      * Store the alias and class name.
      *
      * @param string $alias
@@ -161,6 +154,13 @@ abstract class Relation extends Base implements Listener {
     }
 
     /**
+     * Query the database for records that supply the current relationship.
+     *
+     * @return \Titon\Model\Model|\Titon\Model\Model[]
+     */
+    abstract public function fetchRelation();
+
+    /**
      * Return the relation alias name.
      *
      * @return string
@@ -226,6 +226,10 @@ abstract class Relation extends Base implements Listener {
 
         $class = $this->getPrimaryClass();
 
+        if (!$class) {
+            return null;
+        }
+
         $this->setPrimaryModel(new $class());
 
         return $this->_model;
@@ -265,13 +269,6 @@ abstract class Relation extends Base implements Listener {
 
         return $this->_relatedModel;
     }
-
-    /**
-     * Query the database for records that supply the current relationship.
-     *
-     * @return \Titon\Db\Entity|\Titon\Db\EntityCollection
-     */
-    abstract public function getResults();
 
     /**
      * Return the type of relation.
