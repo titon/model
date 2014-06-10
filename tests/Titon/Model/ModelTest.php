@@ -2,10 +2,13 @@
 namespace Titon\Model;
 
 use Titon\Db\Behavior\TimestampBehavior;
+use Titon\Db\Query;
 use Titon\Model\Relation\ManyToMany;
 use Titon\Model\Relation\ManyToOne;
 use Titon\Model\Relation\OneToMany;
 use Titon\Model\Relation\OneToOne;
+use Titon\Test\Stub\Model\Book;
+use Titon\Test\Stub\Model\Genre;
 use Titon\Test\Stub\Model\Profile;
 use Titon\Test\Stub\Model\User;
 use Titon\Test\TestCase;
@@ -70,6 +73,49 @@ class ModelTest extends TestCase {
         $this->assertSame($conditions, $relation->getConditions());
     }
 
+    public function testClone() {
+        $user1 = new User(['foo' => 'bar']);
+        $user2 = clone $user1;
+
+        $this->assertNotSame($user1, $user2);
+    }
+
+    public function testCount() {
+        $this->assertEquals(0, $this->object->count());
+        $this->object->foo = 'bar';
+        $this->assertEquals(1, $this->object->count());
+    }
+
+    public function testChanged() {
+        $this->object->mapData(['foo' => 'bar']);
+
+        $this->assertFalse($this->object->changed());
+
+        $this->object->foo = 'baz';
+
+        $this->assertTrue($this->object->changed());
+    }
+
+    public function testChangedSameValue() {
+        $this->object->mapData(['foo' => 'bar']);
+
+        $this->assertFalse($this->object->changed());
+
+        $this->object->foo = 'bar';
+
+        $this->assertFalse($this->object->changed());
+    }
+
+    public function testChangedOnRelation() {
+        $this->object->mapData(['foo' => 'bar']);
+
+        $this->assertFalse($this->object->changed());
+
+        $this->object->Profile = new Profile();
+
+        $this->assertFalse($this->object->changed());
+    }
+
     public function testExists() {
         $this->loadFixtures('Users');
 
@@ -105,6 +151,7 @@ class ModelTest extends TestCase {
 
         $this->assertEquals('Miles', $user->firstName);
         $this->assertEquals('Miles', $user->get('firstName'));
+        $this->assertEquals('Miles', $user['firstName']);
     }
 
     public function testGetAccessor() {
@@ -128,8 +175,70 @@ class ModelTest extends TestCase {
         $this->assertEquals('Miles Johnson', $user->fullName);
     }
 
+    public function testGetChanged() {
+        $this->object->mapData([
+            'foo' => 'bar',
+            'key' => 'value'
+        ]);
+
+        $this->assertEquals([], $this->object->getChanged());
+
+        $this->object->foo = 'baz';
+
+        $this->assertEquals([
+            'foo' => 'baz'
+        ], $this->object->getChanged());
+    }
+
+    public function testGetChangedNoRelation() {
+        $this->object->mapData([
+            'foo' => 'bar',
+            'key' => 'value'
+        ]);
+
+        $this->assertEquals([], $this->object->getChanged());
+
+        $this->object->foo = 'baz';
+        $this->object->Profile = new Profile();
+
+        $this->assertEquals([
+            'foo' => 'baz'
+        ], $this->object->getChanged());
+    }
+
     public function testGetDisplayField() {
         $this->assertEquals(['title', 'name', 'id'], $this->object->getDisplayField());
+    }
+
+    public function testGetIterator() {
+        $this->object->mapData(['a' => 1, 'b' => 2, 'c' => 3]);
+
+        $data = [];
+
+        foreach ($this->object as $key => $value) {
+            $data[$key] = $value;
+        }
+
+        $this->assertEquals(['a' => 1, 'b' => 2, 'c' => 3], $data);
+    }
+
+    public function testGetOriginal() {
+        $this->object->mapData([
+            'foo' => 'bar',
+            'key' => 'value'
+        ]);
+
+        $this->assertEquals([
+            'foo' => 'bar',
+            'key' => 'value'
+        ], $this->object->getOriginal());
+
+        $this->object->foo = 'baz';
+
+        $this->assertEquals([
+            'foo' => 'bar',
+            'key' => 'value'
+        ], $this->object->getOriginal());
     }
 
     public function testGetRepository() {
@@ -235,6 +344,34 @@ class ModelTest extends TestCase {
         $this->assertEquals(123, $this->object->id());
     }
 
+    public function testIsDirty() {
+        $this->object->mapData(['foo' => 'bar']);
+
+        $this->assertFalse($this->object->isDirty('foo'));
+
+        $this->object->foo = 'baz';
+
+        $this->assertTrue($this->object->isDirty('foo'));
+    }
+
+    public function testIsDirtySameValue() {
+        $this->object->mapData(['foo' => 'bar']);
+
+        $this->assertFalse($this->object->isDirty('foo'));
+
+        $this->object->foo = 'bar';
+
+        $this->assertFalse($this->object->isDirty('foo'));
+    }
+
+    public function testIsDirtyNoValue() {
+        $this->assertFalse($this->object->isDirty('foo'));
+
+        $this->object->foo = 'bar';
+
+        $this->assertTrue($this->object->isDirty('foo'));
+    }
+
     public function testIsFillable() {
         $profile = new Profile();
 
@@ -256,6 +393,81 @@ class ModelTest extends TestCase {
 
         $this->assertFalse($this->object->isFullyGuarded());
         $this->assertTrue($profile->isFullyGuarded());
+    }
+
+    public function testJsonSerialize() {
+        $user = new User([
+            'id' => 1,
+            'country_id' => 1,
+            'username' => 'miles',
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson',
+            'password' => '1Z5895jf72yL77h',
+            'email' => 'miles@email.com',
+            'age' => 25,
+            'created' => '1988-02-26 21:22:34',
+            'modified' => null,
+            'Profile' => new Profile([
+                'id' => 4,
+                'user_id' => 1,
+                'lastLogin' => '2012-02-15 21:22:34',
+                'currentLogin' => '2013-06-06 19:11:03'
+            ])
+        ]);
+
+        $this->assertEquals([
+            'id' => 1,
+            'country_id' => 1,
+            'username' => 'miles',
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson',
+            'password' => '1Z5895jf72yL77h',
+            'email' => 'miles@email.com',
+            'age' => 25,
+            'created' => '1988-02-26 21:22:34',
+            'modified' => null,
+            'Profile' => [
+                'id' => 4,
+                'user_id' => 1,
+                'lastLogin' => '2012-02-15 21:22:34',
+                'currentLogin' => '2013-06-06 19:11:03'
+            ]
+        ], $user->jsonSerialize());
+    }
+
+    public function testLink() {
+        $profile = new Profile(['foo' => 'bar']);
+
+        $this->object->link($profile);
+
+        $this->assertEquals([$profile], $this->object->getRelation('Profile')->getLinked());
+    }
+
+    /**
+     * @expectedException \Titon\Model\Exception\MissingRelationException
+     */
+    public function testLinkErrorsInvalidRelation() {
+        $this->object->link(new Book());
+    }
+
+    public function testLinkMany() {
+        $book = new Book(['name' => 'A Game Of Thrones']);
+        $genre1 = new Genre(['name' => 'Horror']);
+        $genre2 = new Genre(['name' => 'Action']);
+
+        $book->linkMany($genre1, $genre2);
+
+        $this->assertEquals([$genre1, $genre2], $book->getRelation('Genres')->getLinked());
+    }
+
+    public function testLinkManyArray() {
+        $book = new Book(['name' => 'A Game Of Thrones']);
+        $genre1 = new Genre(['name' => 'Horror']);
+        $genre2 = new Genre(['name' => 'Action']);
+
+        $book->linkMany([$genre1, $genre2]);
+
+        $this->assertEquals([$genre1, $genre2], $book->getRelation('Genres')->getLinked());
     }
 
     public function testLoadRelationships() {
@@ -287,11 +499,37 @@ class ModelTest extends TestCase {
         ], $relations);
     }
 
+    public function testQuery() {
+        $query = $this->object->query(Query::SELECT);
+
+        $this->assertInstanceOf('Titon\Model\QueryBuilder', $query);
+        $this->assertInstanceOf('Titon\Db\Query', $query->getQuery());
+        $this->assertEquals('select', $query->getQuery()->getType());
+    }
+
+    public function testRemove() {
+        $user = new User();
+        $user->foo = 'bar';
+
+        $this->assertTrue(isset($user->foo));
+        unset($user->foo);
+        $this->assertFalse(isset($user->foo));
+
+        $user->foo = 'baz';
+
+        $this->assertTrue($user->has('foo'));
+        $user->remove('foo');
+        $this->assertFalse($user->has('foo'));
+    }
+
     public function testSet() {
         $user = new User();
-        $user->email = 'miles@email.com';
 
+        $user->email = 'miles@email.com';
         $this->assertEquals('miles@email.com', $user->get('email'));
+
+        $user['email'] = 'milesjohnson@email.com';
+        $this->assertEquals('milesjohnson@email.com', $user->get('email'));
     }
 
     public function testSetMutator() {
@@ -310,6 +548,160 @@ class ModelTest extends TestCase {
         $this->object->setValidator($validator);
 
         $this->assertSame($validator, $this->object->getValidator());
+    }
+
+    public function testSerialize() {
+        $user = new User([
+            'id' => 1,
+            'country_id' => 1,
+            'username' => 'miles',
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson',
+            'password' => '1Z5895jf72yL77h',
+            'email' => 'miles@email.com',
+            'age' => 25,
+            'created' => '1988-02-26 21:22:34',
+            'modified' => null,
+            'Profile' => new Profile([
+                'id' => 4,
+                'user_id' => 1,
+                'lastLogin' => '2012-02-15 21:22:34',
+                'currentLogin' => '2013-06-06 19:11:03'
+            ])
+        ]);
+
+        $object = serialize($user);
+        $this->assertEquals('C:26:"Titon\Test\Stub\Model\User":456:{a:11:{s:2:"id";i:1;s:10:"country_id";i:1;s:8:"username";s:5:"miles";s:9:"firstName";s:5:"Miles";s:8:"lastName";s:7:"Johnson";s:8:"password";s:15:"1Z5895jf72yL77h";s:5:"email";s:15:"miles@email.com";s:3:"age";i:25;s:7:"created";s:19:"1988-02-26 21:22:34";s:8:"modified";N;s:7:"Profile";C:29:"Titon\Test\Stub\Model\Profile":127:{a:4:{s:2:"id";i:4;s:7:"user_id";i:1;s:9:"lastLogin";s:19:"2012-02-15 21:22:34";s:12:"currentLogin";s:19:"2013-06-06 19:11:03";}}}}', $object);
+
+        $user = unserialize($object);
+        $this->assertEquals(new User([
+            'id' => 1,
+            'country_id' => 1,
+            'username' => 'miles',
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson',
+            'password' => '1Z5895jf72yL77h',
+            'email' => 'miles@email.com',
+            'age' => 25,
+            'created' => '1988-02-26 21:22:34',
+            'modified' => null,
+            'Profile' => new Profile([
+                'id' => 4,
+                'user_id' => 1,
+                'lastLogin' => '2012-02-15 21:22:34',
+                'currentLogin' => '2013-06-06 19:11:03'
+            ])
+        ]), $user);
+    }
+
+    public function testToArray() {
+        $user = new User([
+            'id' => 1,
+            'country_id' => 1,
+            'username' => 'miles',
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson',
+            'password' => '1Z5895jf72yL77h',
+            'email' => 'miles@email.com',
+            'age' => 25,
+            'created' => '1988-02-26 21:22:34',
+            'modified' => null,
+            'Profile' => new Profile([
+                'id' => 4,
+                'user_id' => 1,
+                'lastLogin' => '2012-02-15 21:22:34',
+                'currentLogin' => '2013-06-06 19:11:03'
+            ])
+        ]);
+
+        $this->assertEquals([
+            'id' => 1,
+            'country_id' => 1,
+            'username' => 'miles',
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson',
+            'password' => '1Z5895jf72yL77h',
+            'email' => 'miles@email.com',
+            'age' => 25,
+            'created' => '1988-02-26 21:22:34',
+            'modified' => null,
+            'Profile' => [
+                'id' => 4,
+                'user_id' => 1,
+                'lastLogin' => '2012-02-15 21:22:34',
+                'currentLogin' => '2013-06-06 19:11:03'
+            ]
+        ], $user->toArray());
+    }
+
+    public function testToJson() {
+        $user = new User([
+            'id' => 1,
+            'country_id' => 1,
+            'username' => 'miles',
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson',
+            'password' => '1Z5895jf72yL77h',
+            'email' => 'miles@email.com',
+            'age' => 25,
+            'created' => '1988-02-26 21:22:34',
+            'modified' => null,
+            'Profile' => new Profile([
+                'id' => 4,
+                'user_id' => 1,
+                'lastLogin' => '2012-02-15 21:22:34',
+                'currentLogin' => '2013-06-06 19:11:03'
+            ])
+        ]);
+
+        $this->assertEquals('{"id":1,"country_id":1,"username":"miles","firstName":"Miles","lastName":"Johnson","password":"1Z5895jf72yL77h","email":"miles@email.com","age":25,"created":"1988-02-26 21:22:34","modified":null,"Profile":{"id":4,"user_id":1,"lastLogin":"2012-02-15 21:22:34","currentLogin":"2013-06-06 19:11:03"}}', $user->toJson());
+    }
+
+    public function testUnlink() {
+        $profile = new Profile(['foo' => 'bar']);
+
+        $this->object->link($profile);
+
+        $this->assertEquals([$profile], $this->object->getRelation('Profile')->getLinked());
+
+        $this->object->unlink($profile);
+
+        $this->assertEquals([], $this->object->getRelation('Profile')->getLinked());
+    }
+
+    /**
+     * @expectedException \Titon\Model\Exception\MissingRelationException
+     */
+    public function testUnlinkErrorsInvalidRelation() {
+        $this->object->unlink(new Book());
+    }
+
+    public function testUnlinkMany() {
+        $book = new Book(['name' => 'A Game Of Thrones']);
+        $genre1 = new Genre(['name' => 'Horror']);
+        $genre2 = new Genre(['name' => 'Action']);
+
+        $book->linkMany($genre1, $genre2);
+
+        $this->assertEquals([$genre1, $genre2], $book->getRelation('Genres')->getLinked());
+
+        $book->unlinkMany($genre1);
+
+        $this->assertEquals([1 => $genre2], $book->getRelation('Genres')->getLinked());
+    }
+
+    public function testUnlinkManyArray() {
+        $book = new Book(['name' => 'A Game Of Thrones']);
+        $genre1 = new Genre(['name' => 'Horror']);
+        $genre2 = new Genre(['name' => 'Action']);
+
+        $book->linkMany([$genre1, $genre2]);
+
+        $this->assertEquals([$genre1, $genre2], $book->getRelation('Genres')->getLinked());
+
+        $book->unlinkMany([$genre1, $genre2]);
+
+        $this->assertEquals([], $book->getRelation('Genres')->getLinked());
     }
 
     public function testValidate() {

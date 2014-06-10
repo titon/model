@@ -10,7 +10,6 @@ namespace Titon\Model;
 use Titon\Common\Traits\Instanceable;
 use Titon\Common\Traits\Mutable;
 use Titon\Db\Behavior;
-use Titon\Db\Entity;
 use Titon\Db\Finder;
 use Titon\Db\Query;
 use Titon\Db\Repository;
@@ -21,14 +20,22 @@ use Titon\Event\Traits\Emittable;
 use Titon\Model\Exception\MassAssignmentException;
 use Titon\Model\Exception\MissingPrimaryKeyException;
 use Titon\Model\Exception\MissingRelationException;
-use Titon\Model\Exception\RelationQueryFailureException;
 use Titon\Model\Relation\ManyToMany;
 use Titon\Model\Relation\ManyToOne;
 use Titon\Model\Relation\OneToMany;
 use Titon\Model\Relation\OneToOne;
+use Titon\Type\Contract\Arrayable;
+use Titon\Type\Contract\Jsonable;
+use Titon\Utility\Hash;
 use Titon\Utility\Inflector;
 use Titon\Utility\Validator;
+use \ArrayIterator;
+use \Serializable;
+use \JsonSerializable;
 use \Exception;
+use \IteratorAggregate;
+use \ArrayAccess;
+use \Countable;
 use \Closure;
 
 /**
@@ -42,7 +49,7 @@ use \Closure;
  *
  * @package Titon\Model
  */
-class Model extends Entity implements Listener {
+class Model implements Listener, Serializable, JsonSerializable, IteratorAggregate, ArrayAccess, Countable, Arrayable, Jsonable {
     use Emittable, Instanceable, RepositoryAware;
 
     /**
@@ -123,6 +130,14 @@ class Model extends Entity implements Listener {
     protected $primaryKey = 'id';
 
     /**
+     * Reserved attributes that will not flag attribute changes.
+     * Will include all relation aliases.
+     *
+     * @type array
+     */
+    protected $reserved = ['junction'];
+
+    /**
      * Database table name.
      *
      * @type string
@@ -144,6 +159,21 @@ class Model extends Entity implements Listener {
     protected $_aliases = [];
 
     /**
+     * Map of key value pairs associated with this model record.
+     * Is set during a database find, or used for a database save.
+     *
+     * @type array
+     */
+    protected $_attributes = [];
+
+    /**
+     * Has the model data changed?
+     *
+     * @type bool
+     */
+    protected $_changed = false;
+
+    /**
      * List of validation errors.
      *
      * @type string[]
@@ -157,6 +187,14 @@ class Model extends Entity implements Listener {
      * @type bool
      */
     protected $_exists = false;
+
+    /**
+     * The original set of data passed through the constructor.
+     * This array is used to watch for changes.
+     *
+     * @type array
+     */
+    protected $_original = [];
 
     /**
      * Model to model relationships, the "ORM".
@@ -175,17 +213,56 @@ class Model extends Entity implements Listener {
     /**
      * Optionally set a record of data into the model.
      *
-     * @param array $data
+     * @param array $attributes
      */
-    public function __construct(array $data = []) {
+    public function __construct(array $attributes = []) {
         $this->initialize();
-        $this->mapData($data);
+        $this->mapData($attributes);
     }
 
     /**
      * Make clone publicly available.
      */
     public function __clone() {
+    }
+
+    /**
+     * Magic method for get().
+     *
+     * @param string $key
+     * @return mixed
+     */
+    public function __get($key) {
+        return $this->get($key);
+    }
+
+    /**
+     * Magic method for set().
+     *
+     * @param string $key
+     * @param mixed $value
+     */
+    public function __set($key, $value) {
+        $this->set($key, $value);
+    }
+
+    /**
+     * Magic method for has().
+     *
+     * @param string $key
+     * @return bool
+     */
+    public function __isset($key) {
+        return $this->has($key);
+    }
+
+    /**
+     * Magic method for remove().
+     *
+     * @param string $key
+     */
+    public function __unset($key) {
+        $this->remove($key);
     }
 
     /**
@@ -210,6 +287,7 @@ class Model extends Entity implements Listener {
 
         $this->_relations[$relation->getAlias()] = $relation;
         $this->_aliases[$relation->getRelatedClass()] = $relation->getAlias();
+        $this->reserved[] = $relation->getAlias();
 
         $this->on('relation', $relation);
 
@@ -261,6 +339,24 @@ class Model extends Entity implements Listener {
     }
 
     /**
+     * Return the changed state.
+     *
+     * @return bool
+     */
+    public function changed() {
+        return $this->_changed;
+    }
+
+    /**
+     * Return the count of the array.
+     *
+     * @return int
+     */
+    public function count() {
+        return count($this->_attributes);
+    }
+
+    /**
      * Delete the record that is currently present in the model instance.
      *
      * @see \Titon\Db\Repository::delete()
@@ -282,8 +378,7 @@ class Model extends Entity implements Listener {
         $model = $this;
         $operation = function() use ($model, $id, $options) {
             if ($count = $model->getRepository()->delete($id, $options)) {
-                $model->_data = [];
-                $model->_exists = false;
+                $model->flush();
 
                 return $count;
             }
@@ -343,22 +438,30 @@ class Model extends Entity implements Listener {
      * @return \Titon\Model\Model
      */
     public function flush() {
-        $this->_data = [];
+        $this->_attributes = [];
+        $this->_original = [];
+        $this->_changed = false;
         $this->_exists = false;
         $this->_errors = [];
+        $this->_validator = null;
 
         return $this;
     }
 
     /**
-     * {@inheritdoc}
+     * Get an attribute on the model. If the attribute points to a relation,
+     * fetch the related records through the relation object.
+     * If an accessor is defined, pass the non-relation attribute through it.
+     *
+     * @param string $key
+     * @return mixed
      */
-    public function get($key, $default = null) {
+    public function get($key) {
         $value = null;
 
         // If the key already exists in the attribute list, return it immediately
         if ($this->has($key)) {
-            $value = parent::get($key, $default);
+            $value = $this->_attributes[$key];
         }
 
         // If the key being accessed points to a relation, either lazy load the data or return the cached data
@@ -373,6 +476,24 @@ class Model extends Entity implements Listener {
         }
 
         return $value;
+    }
+
+    /**
+     * Return an array of data that only includes attributes that have changed.
+     *
+     * @return array
+     */
+    public function getChanged() {
+        $attributes = [];
+
+        if ($this->changed()) {
+            $attributes = array_diff_assoc($this->_attributes, $this->_original);
+
+            // Remove reserved attributes
+            $attributes = Hash::exclude($attributes, $this->reserved);
+        }
+
+        return $attributes;
     }
 
     /**
@@ -391,6 +512,24 @@ class Model extends Entity implements Listener {
      */
     public function getErrors() {
         return $this->_errors;
+    }
+
+    /**
+     * Return an iterator.
+     *
+     * @return \ArrayIterator
+     */
+    public function getIterator() {
+        return new ArrayIterator($this->_attributes);
+    }
+
+    /**
+     * Return the original data set.
+     *
+     * @return array
+     */
+    public function getOriginal() {
+        return $this->_original;
     }
 
     /**
@@ -488,6 +627,16 @@ class Model extends Entity implements Listener {
         }
 
         return $this->_validator;
+    }
+
+    /**
+     * Check if an attribute is set. Will return true for null values.
+     *
+     * @param string $key
+     * @return bool
+     */
+    public function has($key) {
+        return array_key_exists($key, $this->_attributes);
     }
 
     /**
@@ -607,6 +756,26 @@ class Model extends Entity implements Listener {
     }
 
     /**
+     * Check to see if a field has changed (is dirty).
+     *
+     * @param string $key
+     * @return bool
+     */
+    public function isDirty($key) {
+        if (empty($this->_original[$key]) && empty($this->_attributes[$key])) {
+            return false; // No data in either
+
+        } else if (empty($this->_original[$key]) && isset($this->_attributes[$key])) {
+            return true; // No original to compare against
+
+        } else if ($this->_attributes[$key] !== $this->_original[$key]) {
+            return true; // Current value is different than original
+        }
+
+        return false;
+    }
+
+    /**
      * Check if a column is fillable. It's fillable if the array is empty, or the column name is in the list.
      *
      * @param string $key
@@ -633,6 +802,15 @@ class Model extends Entity implements Listener {
      */
     public function isGuarded($key) {
         return ($this->isFullyGuarded() || in_array($key, $this->guarded));
+    }
+
+    /**
+     * Return the values for JSON serialization.
+     *
+     * @return array
+     */
+    public function jsonSerialize() {
+        return $this->toArray();
     }
 
     /**
@@ -719,17 +897,62 @@ class Model extends Entity implements Listener {
     }
 
     /**
-     * When data is mapped through the constructor, set the exists flag if necessary.
+     * When data is mapped through the constructor, set the exists flag if necessary,
+     * and save the original data state to monitor for changes.
      *
      * @param array $data
      * @return $this
      */
     public function mapData(array $data) {
+        $this->flush();
+
         if (!empty($data[$this->primaryKey])) {
             $this->_exists = true;
         }
 
-        return parent::mapData($data);
+        $this->_original = Hash::exclude($data, $this->reserved);
+        $this->_attributes = $data;
+
+        return $this;
+    }
+
+    /**
+     * Alias method for get().
+     *
+     * @param string $key
+     * @return mixed
+     */
+    public function offsetGet($key) {
+        return $this->get($key);
+    }
+
+    /**
+     * Alias method for set().
+     *
+     * @param string $key
+     * @param mixed $value
+     */
+    public function offsetSet($key, $value) {
+        $this->set($key, $value);
+    }
+
+    /**
+     * Alias method for has().
+     *
+     * @param string $key
+     * @return bool
+     */
+    public function offsetExists($key) {
+        return $this->has($key);
+    }
+
+    /**
+     * Alias method for remove().
+     *
+     * @param string $key
+     */
+    public function offsetUnset($key) {
+        $this->remove($key);
     }
 
     /**
@@ -827,6 +1050,18 @@ class Model extends Entity implements Listener {
     }
 
     /**
+     * Remove an attribute defined by key.
+     *
+     * @param string $key
+     * @return $this
+     */
+    public function remove($key) {
+        unset($this->_attributes[$key]);
+
+        return $this;
+    }
+
+    /**
      * Save a record to the database table using the data that has been set to the model.
      * Will return the record ID or 0 on failure.
      *
@@ -852,6 +1087,8 @@ class Model extends Entity implements Listener {
             if ($id = $model->getRepository()->upsert($model, null, $options)) {
                 $model->set($model->getPrimaryKey(), $id);
                 $model->_exists = true;
+                $model->_changed = false;
+                $model->mapData($model->_attributes);
 
                 return $id;
             }
@@ -876,14 +1113,32 @@ class Model extends Entity implements Listener {
     }
 
     /**
-     * {@inheritdoc}
+     * Set an attribute defined by key. If the key does not point to a relation,
+     * pass the value through a mutator and set a changed flag.
+     *
+     * @param string $key
+     * @param mixed $value
+     * @return $this
      */
     public function set($key, $value = null) {
-        if ($method = $this->hasMutator($key)) {
-            $this->{$method}($value);
-        } else {
-            parent::set($key, $value);
+
+        // Do not trigger state changes for relations
+        if (!$this->hasRelation($key)) {
+
+            // Only flag changed if the value is different
+            if ($value != $this->get($key) && !in_array($key, $this->reserved)) {
+                $this->_changed = true;
+            }
+
+            // Run the value through a mutator but do not set the mutator key
+            if ($method = $this->hasMutator($key)) {
+                $this->{$method}($value);
+
+                return $this;
+            }
         }
+
+        $this->_attributes[$key] = $value;
 
         return $this;
     }
@@ -916,6 +1171,36 @@ class Model extends Entity implements Listener {
         $this->on('model', $this);
 
         return $this;
+    }
+
+    /**
+     * Serialize the configuration.
+     *
+     * @return string
+     */
+    public function serialize() {
+        return serialize($this->_attributes);
+    }
+
+    /**
+     * Return the model attributes as an array.
+     *
+     * @return array
+     */
+    public function toArray() {
+        return array_map(function($value) {
+            return ($value instanceof Arrayable) ? $value->toArray() : $value;
+        }, $this->_attributes);
+    }
+
+    /**
+     * Return the model attributes as a JSON string.
+     *
+     * @param int $options
+     * @return string
+     */
+    public function toJson($options = 0) {
+        return json_encode($this, $options);
     }
 
     /**
@@ -954,6 +1239,15 @@ class Model extends Entity implements Listener {
         }
 
         return $this;
+    }
+
+    /**
+     * Reconstruct the data once unserialized.
+     *
+     * @param string $data
+     */
+    public function unserialize($data) {
+        $this->__construct(unserialize($data));
     }
 
     /**
