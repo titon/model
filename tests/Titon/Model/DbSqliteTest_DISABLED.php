@@ -6,7 +6,7 @@ use Titon\Db\Database;
 use Titon\Db\Query;
 use Titon\Db\Sqlite\SqliteDriver;
 
-class DbSqliteTest extends DbMysqlTest {
+class DbSqliteTestDISABLED extends DbMysqlTest {
 
     protected function setUp() {
         parent::setUp();

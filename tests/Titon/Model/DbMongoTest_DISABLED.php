@@ -22,7 +22,7 @@ use Titon\Test\TestCase;
 /**
  * Test class for MongoDB.
  */
-class DbMongoTest extends TestCase {
+class DbMongoTestDISABLED extends TestCase {
 
     /**
      * Setup the DB once, not before every test.

@@ -11,7 +11,7 @@ use Titon\Test\TestCase;
 /**
  * @property \Titon\Model\Behavior\CounterBehavior $object
  */
-class CounterBehaviorTest extends TestCase {
+class CounterBehaviorTestDISABLED extends TestCase {
 
     protected function setUp() {
         parent::setUp();

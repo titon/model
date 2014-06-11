@@ -5,7 +5,7 @@ use Titon\Common\Config;
 use Titon\Db\Database;
 use Titon\Db\Pgsql\PgsqlDriver;
 
-class DbPostgresqlTest extends DbMysqlTest {
+class DbPostgresqlTestDISABLED extends DbMysqlTest {
 
     protected function setUp() {
         parent::setUp();
