@@ -34,9 +34,7 @@ class OneToOne extends Relation {
     public function deleteDependents(Event $event, $ids, $count) {
         $rfk = $this->getRelatedForeignKey();
 
-        $this->getRelatedModel()->updateMany([$rfk => null], function(Query $query) use ($rfk, $ids) {
-            $query->where($rfk, $ids);
-        });
+        $this->query(Query::UPDATE)->where($rfk, $ids)->save([$rfk => null]);
     }
 
     /**
@@ -123,14 +121,10 @@ class OneToOne extends Relation {
             return;
         }
 
+        // Reset the previous records
+        $this->query(Query::UPDATE)->where($rfk, $ids)->save([$rfk => null]);
+
         foreach ((array) $ids as $id) {
-
-            // Reset the previous record
-            $this->getRelatedModel()->updateMany([$rfk => null], function(Query $query) use ($rfk, $id) {
-                $query->where($rfk, $id);
-            });
-
-            // Save the new record
             $link = $links[0]->set($rfk, $id);
 
             if (!$link->save(['validate' => false, 'atomic' => false])) {

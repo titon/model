@@ -41,7 +41,7 @@ class OneToManyTest extends TestCase {
 
         $this->object->unlink($model1);
 
-        $this->assertEquals([1 => $model2], $this->object->getLinked());
+        $this->assertEquals([$model2], $this->object->getLinked());
 
         $this->object->unlink($model2);
 

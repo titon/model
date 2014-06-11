@@ -33,9 +33,7 @@ class OneToMany extends Relation {
     public function deleteDependents(Event $event, $ids, $count) {
         $rfk = $this->getRelatedForeignKey();
 
-        $this->getRelatedModel()->updateMany([$rfk => null], function(Query $query) use ($rfk, $ids) {
-            $query->where($rfk, $ids);
-        });
+        $this->query(Query::UPDATE)->where($rfk, $ids)->save([$rfk => null]);
     }
 
     /**

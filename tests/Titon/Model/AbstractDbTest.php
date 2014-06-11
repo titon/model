@@ -12,9 +12,13 @@ use Titon\Test\Stub\Model\Profile;
 use Titon\Test\Stub\Model\Series;
 use Titon\Test\Stub\Model\Topic;
 use Titon\Test\Stub\Model\User;
+use Titon\Test\Stub\Model\Order;
 use Titon\Test\TestCase;
 
-class AbstractDbTest extends TestCase {
+/**
+ * @property \Titon\Model\Model $object
+ */
+abstract class AbstractDbTest extends TestCase {
 
     protected function tearDown() {
         //$this->logQueries();
@@ -27,6 +31,12 @@ class AbstractDbTest extends TestCase {
      */
     public function logQueries() {
         print_r(array_map('strval', \Titon\Db\Database::registry()->getDriver('default')->getLoggedQueries()));
+    }
+
+    public function testAvg() {
+        $this->loadFixtures('Orders');
+
+        $this->assertEquals(16, Order::avg('quantity'));
     }
 
     public function testCreate() {
@@ -55,6 +65,32 @@ class AbstractDbTest extends TestCase {
             'created' => '',
             'modified' => ''
         ], User::find(6)->toArray());
+    }
+
+    public function testCreateStatic() {
+        $this->loadFixtures('Books');
+
+        $book = Book::create([
+            'series_id' => 1,
+            'name' => 'The Winds of Winter'
+        ]);
+
+        // Will only contains values set
+        $this->assertEquals([
+            'id' => 16,
+            'series_id' => 1,
+            'name' => 'The Winds of Winter'
+        ], $book->toArray());
+
+        $this->assertInstanceOf('Titon\Model\Model', $book);
+    }
+
+    public function testCreateStaticFailure() {
+        $this->loadFixtures('Users');
+
+        $user = User::create(['username' => 'batman']); // Already taken
+
+        $this->assertEquals(null, $user);
     }
 
     public function testCreateWithOneToOne() {
@@ -305,11 +341,11 @@ class AbstractDbTest extends TestCase {
     public function testDecrement() {
         $this->loadFixtures('Topics');
 
-        $this->assertEquals(new Topic(['post_count' => 4]), Topic::select('post_count')->where('id', 1)->first());
+        $this->assertEquals(new Topic(['post_count' => 4]), Topic::select(['post_count'])->where('id', 1)->first());
 
         Topic::decrement(1, ['post_count' => 1]);
 
-        $this->assertEquals(new Topic(['post_count' => 3]), Topic::select('post_count')->where('id', 1)->first());
+        $this->assertEquals(new Topic(['post_count' => 3]), Topic::select(['post_count'])->where('id', 1)->first());
     }
 
     public function testDelete() {
@@ -671,14 +707,54 @@ class AbstractDbTest extends TestCase {
         $this->assertEquals([], $user2->toArray());
     }
 
+    public function testFindBy() {
+        $this->loadFixtures('Users');
+
+        $user1 = User::findBy('username', 'miles');
+        $user2 = User::findBy('username', 'ironman');
+
+        $this->assertInstanceOf('Titon\Model\Model', $user1);
+        $this->assertInstanceOf('Titon\Model\Model', $user2);
+
+        $this->assertTrue($user1->exists());
+        $this->assertFalse($user2->exists());
+
+        $this->assertEquals(new User([
+            'id' => 1,
+            'country_id' => 1,
+            'username' => 'miles',
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson',
+            'password' => '1Z5895jf72yL77h',
+            'email' => 'miles@email.com',
+            'age' => 25,
+            'created' => '1988-02-26 21:22:34',
+            'modified' => null
+        ]), $user1);
+
+        $this->assertEquals([], $user2->toArray());
+    }
+
     public function testIncrement() {
         $this->loadFixtures('Topics');
 
-        $this->assertEquals(new Topic(['post_count' => 4]), Topic::select('post_count')->where('id', 1)->first());
+        $this->assertEquals(new Topic(['post_count' => 4]), Topic::select(['post_count'])->where('id', 1)->first());
 
         Topic::increment(1, ['post_count' => 3]);
 
-        $this->assertEquals(new Topic(['post_count' => 7]), Topic::select('post_count')->where('id', 1)->first());
+        $this->assertEquals(new Topic(['post_count' => 7]), Topic::select(['post_count'])->where('id', 1)->first());
+    }
+
+    public function testMax() {
+        $this->loadFixtures('Orders');
+
+        $this->assertEquals(33, Order::max('quantity'));
+    }
+
+    public function testMin() {
+        $this->loadFixtures('Orders');
+
+        $this->assertEquals(1, Order::min('quantity'));
     }
 
     public function testReadSingleWithOneToOne() {
@@ -1087,6 +1163,68 @@ class AbstractDbTest extends TestCase {
                 ])
             ]),
         ]), $actual);
+    }
+
+    public function testSelect() {
+        $query = User::select(['foo', 'bar']);
+
+        $this->assertInstanceOf('Titon\Model\QueryBuilder', $query);
+        $this->assertEquals('select', $query->getQuery()->getType());
+        $this->assertEquals(['foo', 'bar'], $query->getQuery()->getFields());
+    }
+
+    public function testSum() {
+        $this->loadFixtures('Orders');
+
+        $this->assertEquals(490, Order::sum('quantity'));
+    }
+
+    public function testTotal() {
+        $this->loadFixtures('Orders');
+
+        $this->assertEquals(30, Order::total());
+    }
+
+    public function testTruncate() {
+        $this->loadFixtures('Orders');
+
+        $this->assertEquals(30, Order::total());
+
+        Order::truncate();
+
+        $this->assertEquals(0, Order::total());
+    }
+
+    public function testUpdateStatic() {
+        $this->loadFixtures('Books');
+
+        $book = Book::update(1, ['name' => 'GoT']);
+
+        $this->assertEquals([
+            'id' => 1,
+            'series_id' => 1,
+            'name' => 'GoT',
+            'isbn' => '0-553-10354-7',
+            'released' => '1996-08-02'
+        ], $book->toArray());
+
+        $this->assertInstanceOf('Titon\Model\Model', $book);
+    }
+
+    public function testUpdateStaticFailure() {
+        $this->loadFixtures('Users');
+
+        $user = User::update(1, ['username' => 'batman']); // Already taken
+
+        $this->assertEquals(null, $user);
+    }
+
+    public function testUpdateStaticInvalidID() {
+        $this->loadFixtures('Books');
+
+        $book = Book::update(666, ['name' => 'Foobar']);
+
+        $this->assertEquals(null, $book);
     }
 
 }

@@ -130,10 +130,6 @@ class ModelTest extends TestCase {
             'username' => 'miles',
             'firstName' => 'Miles'
         ], $this->object->toArray());
-
-        $this->object->fill(['username' => 'batman']);
-
-        $this->assertEquals(['username' => 'batman'], $this->object->toArray());
     }
 
     /**
@@ -687,7 +683,7 @@ class ModelTest extends TestCase {
 
         $book->unlinkMany($genre1);
 
-        $this->assertEquals([1 => $genre2], $book->getRelation('Genres')->getLinked());
+        $this->assertEquals([$genre2], $book->getRelation('Genres')->getLinked());
     }
 
     public function testUnlinkManyArray() {

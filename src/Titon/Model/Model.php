@@ -417,8 +417,6 @@ class Model implements Listener, Serializable, JsonSerializable, IteratorAggrega
      * @throws \Titon\Model\Exception\MassAssignmentException
      */
     public function fill(array $data) {
-        $this->flush();
-
         if ($this->isFullyGuarded()) {
             throw new MassAssignmentException(sprintf('Cannot assign attributes as %s is locked', get_class($this)));
         }
@@ -1085,10 +1083,10 @@ class Model implements Listener, Serializable, JsonSerializable, IteratorAggrega
         $model = $this;
         $operation = function() use ($model, $options) {
             if ($id = $model->getRepository()->upsert($model, null, $options)) {
+                $model->mapData($model->_attributes);
                 $model->set($model->getPrimaryKey(), $id);
                 $model->_exists = true;
                 $model->_changed = false;
-                $model->mapData($model->_attributes);
 
                 return $id;
             }
@@ -1287,39 +1285,74 @@ class Model implements Listener, Serializable, JsonSerializable, IteratorAggrega
     }
 
     /**
+     * Return the average value for a field based on all records in the database.
+     *
+     * @see \Titon\Db\Repository::aggregate()
+     *
+     * @param string $field
+     * @return int
+     */
+    public static function avg($field) {
+        return static::select()->avg($field);
+    }
+
+    /**
+     * Create a new model instance, fill with data, and attempt to save.
+     * Return the model instance on success, or a null on failure.
+     *
+     * @see \Titon\Db\Repository::create()
+     *
+     * @param array $data
+     * @param array $options
+     * @return \Titon\Model\Model
+     */
+    public static function create(array $data, array $options = []) {
+        /** @type \Titon\Model\Model $model */
+        $model = new static();
+        $model->fill($data);
+
+        if ($model->save($options)) {
+            return $model;
+        }
+
+        return null;
+    }
+
+    /**
+     * Decrement a field on a single record (or multiple if a Closure is passed) using a stepped value.
+     *
      * @see \Titon\Db\Repository::decrement()
+     *
+     * @param int|\Closure $id
+     * @param array $fields
+     * @return int - Number of rows affected
      */
     public static function decrement($id, array $fields) {
         return static::repository()->decrement($id, $fields);
     }
 
     /**
-     * @see \Titon\Db\Repository::delete()
-     */
-    public static function deleteBy($id, array $options = []) {
-        return static::repository()->delete($id, $options);
-    }
-
-    /**
-     * @see \Titon\Db\Repository::deleteMany()
-     */
-    public static function deleteMany(Closure $conditions, array $options = []) {
-        return static::repository()->deleteMany($conditions, $options);
-    }
-
-    /**
-     * Will attempt to find a record by ID and return a model instance with data pre-filled.
-     * If no record can be found, an empty model instance will be returned.
-     *
-     * @see \Titon\Db\Repository::read()
+     * Similar to `findBy()`, but will attempt to find a record by ID.
      *
      * @param int $id
      * @param array $options
      * @return \Titon\Model\Model
      */
     public static function find($id, array $options = []) {
-        /** @type \Titon\Model\Model $record */
-        if ($record = static::repository()->read($id, $options)) {
+        return static::findBy(static::getInstance()->getPrimaryKey(), $id, $options);
+    }
+
+    /**
+     * Will attempt to find a record by a field's value and return a model instance with data pre-filled.
+     * If no record can be found, an empty model instance will be returned.
+     *
+     * @param string $field
+     * @param mixed $value
+     * @param array $options
+     * @return \Titon\Model\Model
+     */
+    public static function findBy($field, $value, array $options = []) {
+        if ($record = static::select()->where($field, $value)->first($options)) {
             return $record;
         }
 
@@ -1327,24 +1360,40 @@ class Model implements Listener, Serializable, JsonSerializable, IteratorAggrega
     }
 
     /**
+     * Increment a field on a single record (or multiple if a Closure is passed) using a stepped value.
+     *
      * @see \Titon\Db\Repository::increment()
+     *
+     * @param int|\Closure $id
+     * @param array $fields
+     * @return int - Number of rows affected
      */
     public static function increment($id, array $fields) {
         return static::repository()->increment($id, $fields);
     }
 
     /**
-     * @see \Titon\Db\Repository::create()
+     * Return the maximum value for a field based on all records in the database.
+     *
+     * @see \Titon\Db\Repository::aggregate()
+     *
+     * @param string $field
+     * @return int
      */
-    public static function insert(array $data, array $options = []) {
-        return static::repository()->create($data, $options);
+    public static function max($field) {
+        return static::select()->max($field);
     }
 
     /**
-     * @see \Titon\Db\Repository::createMany()
+     * Return the minimum value for a field based on all records in the database.
+     *
+     * @see \Titon\Db\Repository::aggregate()
+     *
+     * @param string $field
+     * @return int
      */
-    public static function insertMany(array $data, $hasPk = false) {
-        return static::repository()->createMany($data, $hasPk);
+    public static function min($field) {
+        return static::select()->min($field);
     }
 
     /**
@@ -1357,22 +1406,39 @@ class Model implements Listener, Serializable, JsonSerializable, IteratorAggrega
     }
 
     /**
+     * Create a new SELECT query that is wrapped with the models query builder interface.
+     * Optionally set a list of fields to select.
+     *
      * @see \Titon\Db\Repository::select()
      *
+     * @param array $fields
      * @return \Titon\Model\QueryBuilder
      */
-    public static function select() {
-        return static::getInstance()->query(Query::SELECT)->fields(func_get_args());
+    public static function select(array $fields = []) {
+        return static::getInstance()->query(Query::SELECT)->fields($fields);
     }
 
     /**
-     * Return a count of records in the table.
+     * Return the sum of values for a field based on all records in the database.
      *
-     * @param \Closure $conditions
+     * @see \Titon\Db\Repository::aggregate()
+     *
+     * @param string $field
      * @return int
      */
-    public static function total(Closure $conditions = null) {
-        return static::select()->bindCallback($conditions)->count();
+    public static function sum($field) {
+        return static::select()->sum($field);
+    }
+
+    /**
+     * Return the total count of all records in the database.
+     *
+     * @see \Titon\Db\Repository::aggregate()
+     *
+     * @return int
+     */
+    public static function total() {
+        return static::select()->count();
     }
 
     /**
@@ -1385,17 +1451,28 @@ class Model implements Listener, Serializable, JsonSerializable, IteratorAggrega
     }
 
     /**
+     * Update a model by ID by finding the record in the database, filling the data, and attempting to save.
+     * Return the model instance on success, or a null on failure.
+     *
      * @see \Titon\Db\Repository::update()
+     *
+     * @param int $id
+     * @param array $data
+     * @param array $options
+     * @return \Titon\Model\Model
      */
-    public static function updateBy($id, array $data, array $options = []) {
-        return static::repository()->update($id, $data, $options);
-    }
+    public static function update($id, array $data, array $options = []) {
+        $model = static::find($id);
 
-    /**
-     * @see \Titon\Db\Repository::updateMany()
-     */
-    public static function updateMany(array $data, Closure $conditions, array $options = []) {
-        return static::repository()->updateMany($data, $conditions, $options);
+        if ($model->exists()) {
+            $model->fill($data);
+
+            if ($model->save($options)) {
+                return $model;
+            }
+        }
+
+        return null;
     }
 
 }

@@ -302,6 +302,16 @@ abstract class Relation extends Base implements Listener {
     abstract public function loadRelations(Event $event, array &$results, $finder);
 
     /**
+     * Create a new query for the related model.
+     *
+     * @param string $type
+     * @return \Titon\Model\QueryBuilder
+     */
+    public function query($type) {
+        return $this->getRelatedModel()->query($type);
+    }
+
+    /**
      * {@inheritdoc}
      */
     public function registerEvents() {
@@ -435,6 +445,9 @@ abstract class Relation extends Base implements Listener {
                 unset($this->_links[$i]);
             }
         }
+
+        // Reorder indices
+        $this->_links = array_values($this->_links);
 
         return $this;
     }
