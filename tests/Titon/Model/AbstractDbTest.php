@@ -1,6 +1,7 @@
 <?php
 namespace Titon\Model;
 
+use Titon\Db\Database;
 use Titon\Db\Entity;
 use Titon\Db\EntityCollection;
 use Titon\Db\Query;
@@ -21,7 +22,7 @@ use Titon\Test\TestCase;
 abstract class AbstractDbTest extends TestCase {
 
     protected function tearDown() {
-        //$this->logQueries();
+        $this->logQueries();
 
         parent::tearDown();
     }
@@ -30,7 +31,7 @@ abstract class AbstractDbTest extends TestCase {
      * Extremely useful for validating the correct queries and the number of queries being ran.
      */
     public function logQueries() {
-        print_r(array_map('strval', \Titon\Db\Database::registry()->getDriver('default')->getLoggedQueries()));
+        print_r(array_map('strval', Database::registry()->getDriver('default')->getLoggedQueries()));
     }
 
     public function testAvg() {
@@ -1195,6 +1196,43 @@ abstract class AbstractDbTest extends TestCase {
         $this->assertEquals(0, Order::total());
     }
 
+    public function testUpdate() {
+        $this->loadFixtures('Users');
+
+        $user = User::find(1);
+
+        $this->assertEquals(new User([
+            'id' => 1,
+            'country_id' => 1,
+            'username' => 'miles',
+            'password' => '1Z5895jf72yL77h',
+            'email' => 'miles@email.com',
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson',
+            'age' => 25,
+            'created' => '1988-02-26 21:22:34',
+            'modified' => null
+        ]), $user);
+
+        $user->country_id = 3;
+        $user->username = 'milesj';
+
+        $this->assertEquals(1, $user->save(['validate' => false]));
+
+        $this->assertEquals(new User([
+            'id' => 1,
+            'country_id' => 3,
+            'username' => 'milesj',
+            'password' => '1Z5895jf72yL77h',
+            'email' => 'miles@email.com',
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson',
+            'age' => 25,
+            'created' => '1988-02-26 21:22:34',
+            'modified' => null
+        ]), User::find(1));
+    }
+
     public function testUpdateStatic() {
         $this->loadFixtures('Books');
 
@@ -1225,6 +1263,64 @@ abstract class AbstractDbTest extends TestCase {
         $book = Book::update(666, ['name' => 'Foobar']);
 
         $this->assertEquals(null, $book);
+    }
+
+    public function testUpdateWithOneToOne() {
+        $this->loadFixtures(['Users', 'Profiles']);
+
+        $user = User::find(1);
+
+        $this->assertEquals(new User([
+            'id' => 1,
+            'country_id' => 1,
+            'username' => 'miles',
+            'password' => '1Z5895jf72yL77h',
+            'email' => 'miles@email.com',
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson',
+            'age' => 25,
+            'created' => '1988-02-26 21:22:34',
+            'modified' => null
+        ]), $user);
+
+        $profile = $user->Profile;
+
+        $this->assertEquals(new Profile([
+            'id' => 4,
+            'user_id' => 1,
+            'lastLogin' => '2012-02-15 21:22:34',
+            'currentLogin' => '2013-06-06 19:11:03'
+        ]), $profile);
+
+        // Update records
+        $time = time();
+
+        $user->country_id = 3;
+        $user->username = 'milesj';
+
+        $profile->currentLogin = $time;
+        $user->link($profile);
+
+        $this->assertEquals(1, $user->save(['validate' => false]));
+
+        $this->assertEquals(new User([
+            'id' => 1,
+            'country_id' => 3,
+            'username' => 'milesj',
+            'password' => '1Z5895jf72yL77h',
+            'email' => 'miles@email.com',
+            'firstName' => 'Miles',
+            'lastName' => 'Johnson',
+            'age' => 25,
+            'created' => '1988-02-26 21:22:34',
+            'modified' => null,
+            'Profile' => new Profile([
+                'id' => 4,
+                'user_id' => 1,
+                'lastLogin' => '2012-02-15 21:22:34',
+                'currentLogin' => date('Y-m-d H:i:s', $time)
+            ])
+        ]), User::select()->with('Profile')->where('id', 1)->first());
     }
 
 }

@@ -115,7 +115,7 @@ class OneToMany extends Relation {
             foreach ($links as $link) {
                 $link->set($rfk, $id);
 
-                if (!$link->save(['validate' => false, 'atomic' => false])) {
+                if (!$link->save(['validate' => false, 'atomic' => false, 'force' => true])) {
                     throw new RelationQueryFailureException(sprintf('Failed to save %s related record(s)', $this->getAlias()));
                 }
             }

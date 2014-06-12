@@ -117,7 +117,7 @@ class ManyToOne extends Relation {
      */
     public function saveLinked(Event $event, $ids, $count) {
         foreach ($this->getLinked() as $link) {
-            if (!$link->save(['validate' => false, 'atomic' => false])) {
+            if (!$link->save(['validate' => false, 'atomic' => false, 'force' => true])) {
                 throw new RelationQueryFailureException(sprintf('Failed to save %s related record(s)', $this->getAlias()));
             }
         }

@@ -954,29 +954,48 @@ class Model implements Listener, Serializable, JsonSerializable, IteratorAggrega
     }
 
     /**
-     * {@inheritdoc}
+     * Callback triggered before a delete operation occurs.
+     * Returning false will abort the deletion.
+     *
+     * @param \Titon\Event\Event $event
+     * @param \Titon\Db\Query $query
+     * @param int $id
+     * @return mixed
      */
     public function preDelete(Event $event, Query $query, $id) {
         return true;
     }
 
     /**
-     * {@inheritdoc}
+     * Callback triggered before a find operation occurs.
+     * Returning false will abort the find.
+     *
+     * @param \Titon\Event\Event $event
+     * @param \Titon\Db\Query $query
+     * @param string $finder
+     * @return mixed
      */
     public function preFind(Event $event, Query $query, $finder) {
         return true;
     }
 
     /**
-     * {@inheritdoc}
+     * Callback triggered before an insert or update operation occurs.
+     * Returning false will abort the save.
+     *
+     * @param \Titon\Event\Event $event
+     * @param \Titon\Db\Query $query
+     * @param int $id
+     * @param array $data
+     * @return mixed
      */
     public function preSave(Event $event, Query $query, $id, array &$data) {
         return true;
     }
 
     /**
-     * Method called before validation occurs.
-     * Returning a boolean false will cease validation.
+     * Callback triggered before validation occurs.
+     * Returning false will cease validation.
      *
      * @param \Titon\Event\Event $event
      * @param \Titon\Model\Model $model
@@ -988,28 +1007,43 @@ class Model implements Listener, Serializable, JsonSerializable, IteratorAggrega
     }
 
     /**
-     * {@inheritdoc}
+     * Callback triggered after a delete operation occurs.
+     *
+     * @param \Titon\Event\Event $event
+     * @param int $id
+     * @param int $count
+     * @return mixed
      */
     public function postDelete(Event $event, $id, $count) {
         return;
     }
 
     /**
-     * {@inheritdoc}
+     * Callback triggered after a find operation occurs.
+     *
+     * @param \Titon\Event\Event $event
+     * @param array $results
+     * @param string $finder
+     * @return mixed
      */
     public function postFind(Event $event, array &$results, $finder) {
         return;
     }
 
     /**
-     * {@inheritdoc}
+     * Callback triggered after an insert or update operation occurs.
+     *
+     * @param \Titon\Event\Event $event
+     * @param int $id
+     * @param int $count
+     * @return mixed
      */
     public function postSave(Event $event, $id, $count) {
         return;
     }
 
     /**
-     * Method called after validation occurs.
+     * Callback triggered after validation occurs.
      *
      * @param \Titon\Event\Event $event
      * @param \Titon\Model\Model $model
@@ -1068,11 +1102,12 @@ class Model implements Listener, Serializable, JsonSerializable, IteratorAggrega
      * @param array $options {
      *      @type bool $validate    Will validate the current record of data before saving
      *      @type bool $atomic      Will wrap the save query and all nested queries in a transaction
+     *      @type bool $force       Will save all attributes at once instead of only changed attributes
      * }
      * @return int
      */
     public function save(array $options = []) {
-        $options = $options + ['validate' => true, 'atomic' => true];
+        $options = $options + ['validate' => true, 'atomic' => true, 'force' => false];
         $passed = $options['validate'] ? $this->validate() : true;
 
         // Validation failed, exit early
@@ -1080,9 +1115,22 @@ class Model implements Listener, Serializable, JsonSerializable, IteratorAggrega
             return 0;
         }
 
+        // Save fields that have changed, else save them all
+        $data = $this->getChanged();
+
+        if (!$data || $options['force']) {
+            $data = $this->toArray();
+        }
+
+        // Be sure to persist the ID for updates
+        if (empty($data[$this->primaryKey]) && ($id = $this->id())) {
+            $data[$this->primaryKey] = $id;
+        }
+
+        // Upsert the record and modify flags on success
         $model = $this;
-        $operation = function() use ($model, $options) {
-            if ($id = $model->getRepository()->upsert($model, null, $options)) {
+        $operation = function() use ($model, $data, $options) {
+            if ($id = $model->getRepository()->upsert($data, null, $options)) {
                 $model->mapData($model->_attributes);
                 $model->set($model->getPrimaryKey(), $id);
                 $model->_exists = true;
