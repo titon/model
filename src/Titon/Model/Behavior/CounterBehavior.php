@@ -9,6 +9,7 @@ namespace Titon\Model\Behavior;
 
 use Titon\Common\Traits\Cacheable;
 use Titon\Db\Behavior\AbstractBehavior;
+use Titon\Db\Query;
 use Titon\Event\Event;
 use Titon\Model\ModelAware;
 use Titon\Model\Relation;
@@ -62,10 +63,11 @@ class CounterBehavior extends AbstractBehavior {
      * Fetch records about to be deleted since they do not exist in postDelete().
      *
      * @param \Titon\Event\Event $event
+     * @param \Titon\Db\Query $query
      * @param int|int[] $id
      * @return mixed
      */
-    public function preDelete(Event $event, $id) {
+    public function preDelete(Event $event, Query $query, $id) {
         $model = $this->getModel();
 
         foreach ($this->getCounters() as $alias => $counter) {
@@ -81,10 +83,10 @@ class CounterBehavior extends AbstractBehavior {
                             ->bindCallback($counter['scope'])
                             ->all();
 
-                        $this->setCache(['Junction', $alias, $value], $results);
+                        $this->setCache(['junction', $alias, $value], $results);
                     break;
                     case Relation::MANY_TO_ONE:
-                        $this->setCache(['Record', $alias, $value], $model->getRepository()->read($value));
+                        $this->setCache(['record', $alias, $value], $model->find($value));
                     break;
                 }
             }
@@ -98,8 +100,9 @@ class CounterBehavior extends AbstractBehavior {
      *
      * @param \Titon\Event\Event $event
      * @param int|int[] $id
+     * @param int $count
      */
-    public function postDelete(Event $event, $id) {
+    public function postDelete(Event $event, $id, $count) {
         $this->syncCounters($id);
     }
 
@@ -108,9 +111,9 @@ class CounterBehavior extends AbstractBehavior {
      *
      * @param \Titon\Event\Event $event
      * @param int|int[] $id
-     * @param bool $created
+     * @param int $count
      */
-    public function postSave(Event $event, $id, $created = false) {
+    public function postSave(Event $event, $id, $count) {
         $this->syncCounters($id);
     }
 
@@ -178,7 +181,7 @@ class CounterBehavior extends AbstractBehavior {
         $relatedRepo = $relation->getRelatedModel()->getRepository();
 
         foreach ((array) $ids as $id) {
-            $results = $this->getCache(['Junction', $alias, $id]);
+            $results = $this->getCache(['junction', $alias, $id]);
 
             if (!$results) {
                 $results = $junctionRepo->select()
@@ -205,6 +208,9 @@ class CounterBehavior extends AbstractBehavior {
                 // Update the related table's count field
                 $relatedRepo->update($foreign_id, [
                     $counter['field'] => $count
+                ], [
+                    'before' => false,
+                    'after' => false
                 ]);
 
                 $this->setCache($cacheKey, true);
@@ -229,13 +235,13 @@ class CounterBehavior extends AbstractBehavior {
      * @param array $counter
      */
     protected function _syncManyToOne(ManyToOne $relation, $ids, array $counter) {
-        $repo = $this->getModel()->getRepository();
+        $model = $this->getModel();
         $alias = $relation->getAlias();
         $fk = $relation->getPrimaryForeignKey();
         $relatedRepo = $relation->getRelatedModel()->getRepository();
 
         foreach ((array) $ids as $id) {
-            $result = $this->getCache(['Record', $alias, $id]) ?: $repo->read($id);
+            $result = $this->getCache(['record', $alias, $id]) ?: $model->find($id);
             $foreign_id = $result[$fk];
             $cacheKey = [$alias, $fk, $foreign_id];
 
@@ -245,7 +251,7 @@ class CounterBehavior extends AbstractBehavior {
             }
 
             // Get a count of all current records
-            $count = $repo->select()
+            $count = $model->select()
                 ->where($fk, $foreign_id)
                 ->bindCallback($counter['scope'])
                 ->count();
@@ -253,6 +259,9 @@ class CounterBehavior extends AbstractBehavior {
             // Update the related table's count field
             $relatedRepo->update($foreign_id, [
                 $counter['field'] => $count
+            ], [
+                'before' => false,
+                'after' => false
             ]);
 
             $this->setCache($cacheKey, true);

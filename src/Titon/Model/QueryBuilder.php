@@ -38,7 +38,7 @@ use \Closure;
  * @method \Titon\Model\QueryBuilder orWhere(string $field, string $op, mixed $value = '')
  * @method \Titon\Model\QueryBuilder outerJoin(string $table, array $fields, array $on)
  * @method \Titon\Model\QueryBuilder rightJoin(string $table, array $fields, array $on)
- * @method int save(array $data)
+ * @method int save(array $data = [])
  * @method \Titon\Model\QueryBuilder schema($schema)
  * @method \Titon\Model\QueryBuilder straightJoin(string $table, array $fields, array $on)
  * @method \Titon\Db\Query\SubQuery subQuery()
