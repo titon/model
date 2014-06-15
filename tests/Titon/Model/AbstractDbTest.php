@@ -22,7 +22,7 @@ use Titon\Test\TestCase;
 abstract class AbstractDbTest extends TestCase {
 
     protected function tearDown() {
-        $this->logQueries();
+        //$this->logQueries();
 
         parent::tearDown();
     }
@@ -261,6 +261,40 @@ abstract class AbstractDbTest extends TestCase {
         ]), Series::select()->with('Books')->where('id', 4)->first());
     }
 
+    public function testCreateWithManyToOne() {
+        $this->loadFixtures(['Series', 'Books']);
+
+        $series = Series::find(1);
+
+        $this->assertEquals(new Series([
+            'id' => 1,
+            'author_id' => 1,
+            'name' => 'A Song of Ice and Fire'
+        ]), $series);
+
+        // Change a value and see if it gets saved when the book does
+        $series->name = 'ASOIAF';
+
+        $book = new Book();
+        $book->name = 'The Winds of Winter';
+        $book->link($series);
+
+        $this->assertEquals(16, $book->save(['validate' => false]));
+
+        $this->assertEquals(new Book([
+            'id' => 16,
+            'series_id' => 1,
+            'name' => 'The Winds of Winter',
+            'isbn' => '',
+            'released' => '',
+            'Series' => new Series([
+                'id' => 1,
+                'author_id' => 1,
+                'name' => 'ASOIAF'
+            ])
+        ]), Book::select()->with('Series')->where('id', 16)->first());
+    }
+
     public function testCreateWithManyToMany() {
         $this->loadFixtures(['Genres', 'Books', 'BookGenres']);
 
@@ -303,40 +337,6 @@ abstract class AbstractDbTest extends TestCase {
                 ])
             ])
         ]), Book::select()->with('Genres')->where('id', 16)->first());
-    }
-
-    public function testCreateWithManyToOne() {
-        $this->loadFixtures(['Series', 'Books']);
-
-        $series = Series::find(1);
-
-        $this->assertEquals(new Series([
-            'id' => 1,
-            'author_id' => 1,
-            'name' => 'A Song of Ice and Fire'
-        ]), $series);
-
-        // Change a value and see if it gets saved when the book does
-        $series->name = 'ASOFAI';
-
-        $book = new Book();
-        $book->name = 'The Winds of Winter';
-        $book->link($series);
-
-        $this->assertEquals(16, $book->save(['validate' => false]));
-
-        $this->assertEquals(new Book([
-            'id' => 16,
-            'series_id' => 1,
-            'name' => 'The Winds of Winter',
-            'isbn' => '',
-            'released' => '',
-            'Series' => new Series([
-                'id' => 1,
-                'author_id' => 1,
-                'name' => 'ASOFAI'
-            ])
-        ]), Book::select()->with('Series')->where('id', 16)->first());
     }
 
     public function testDecrement() {
@@ -1321,6 +1321,197 @@ abstract class AbstractDbTest extends TestCase {
                 'currentLogin' => date('Y-m-d H:i:s', $time)
             ])
         ]), User::select()->with('Profile')->where('id', 1)->first());
+    }
+
+    public function testUpdateWithOneToMany() {
+        $this->loadFixtures(['Series', 'Books']);
+
+        $series = Series::find(1);
+
+        $this->assertEquals(new Series([
+            'id' => 1,
+            'author_id' => 1,
+            'name' => 'A Song of Ice and Fire'
+        ]), $series);
+
+        $books = $series->Books;
+
+        $this->assertEquals(new EntityCollection([
+            new Book(['id' => 1, 'series_id' => 1, 'name' => 'A Game of Thrones', 'isbn' => '0-553-10354-7', 'released' => '1996-08-02']),
+            new Book(['id' => 2, 'series_id' => 1, 'name' => 'A Clash of Kings', 'isbn' => '0-553-10803-4', 'released' => '1999-02-25']),
+            new Book(['id' => 3, 'series_id' => 1, 'name' => 'A Storm of Swords', 'isbn' => '0-553-10663-5', 'released' => '2000-11-11']),
+            new Book(['id' => 4, 'series_id' => 1, 'name' => 'A Feast for Crows', 'isbn' => '0-553-80150-3', 'released' => '2005-11-02']),
+            new Book(['id' => 5, 'series_id' => 1, 'name' => 'A Dance with Dragons', 'isbn' => '0-553-80147-3', 'released' => '2011-07-19']),
+        ]), $books);
+
+        // Change series and book
+        $series->name = 'ASOIAF';
+
+        $book = $books[0];
+        $book->name = 'GOT';
+
+        $series->link($book);
+
+        $this->assertEquals(1, $series->save(['validate' => false]));
+
+        $this->assertEquals(new Series([
+            'id' => 1,
+            'author_id' => 1,
+            'name' => 'ASOIAF',
+            'Books' => new EntityCollection([
+                new Book(['id' => 1, 'series_id' => 1, 'name' => 'GOT', 'isbn' => '0-553-10354-7', 'released' => '1996-08-02']),
+                new Book(['id' => 2, 'series_id' => 1, 'name' => 'A Clash of Kings', 'isbn' => '0-553-10803-4', 'released' => '1999-02-25']),
+                new Book(['id' => 3, 'series_id' => 1, 'name' => 'A Storm of Swords', 'isbn' => '0-553-10663-5', 'released' => '2000-11-11']),
+                new Book(['id' => 4, 'series_id' => 1, 'name' => 'A Feast for Crows', 'isbn' => '0-553-80150-3', 'released' => '2005-11-02']),
+                new Book(['id' => 5, 'series_id' => 1, 'name' => 'A Dance with Dragons', 'isbn' => '0-553-80147-3', 'released' => '2011-07-19']),
+            ])
+        ]), Series::select()->with('Books')->where('id', 1)->first());
+    }
+
+    public function testUpdateWithManyToOne() {
+        $this->loadFixtures(['Series', 'Books']);
+
+        $series = Series::find(1);
+
+        $this->assertEquals(new Series([
+            'id' => 1,
+            'author_id' => 1,
+            'name' => 'A Song of Ice and Fire'
+        ]), $series);
+
+        // Update a book
+        $book = Book::find(1);
+        $book->name = 'GOT';
+
+        $series->name = 'ASOIAF';
+        $book->link($series);
+
+        $this->assertEquals(1, $book->save(['validate' => false]));
+
+        $this->assertEquals(new Book([
+            'id' => 1,
+            'series_id' => 1,
+            'name' => 'GOT',
+            'isbn' => '0-553-10354-7',
+            'released' => '1996-08-02',
+            'Series' => new Series([
+                'id' => 1,
+                'author_id' => 1,
+                'name' => 'ASOIAF'
+            ])
+        ]), Book::select()->with('Series')->where('id', 1)->first());
+    }
+
+    public function testUpdateWithManyToMany() {
+        $this->loadFixtures(['Genres', 'Books', 'BookGenres']);
+
+        $book = Book::find(5);
+
+        $this->assertEquals(new Book([
+            'id' => 5,
+            'series_id' => 1,
+            'name' => 'A Dance with Dragons',
+            'isbn' => '0-553-80147-3',
+            'released' => '2011-07-19'
+        ]), $book);
+
+        $genres = $book->Genres;
+
+        $this->assertEquals(new EntityCollection([
+            new Genre([
+                'id' => 3,
+                'name' => 'Action-Adventure',
+                'book_count' => 8,
+                'junction' => new Entity([
+                    'id' => 14,
+                    'book_id' => 5,
+                    'genre_id' => 3
+                ])
+            ]),
+            new Genre([
+                'id' => 5,
+                'name' => 'Horror',
+                'book_count' => 5,
+                'junction' => new Entity([
+                    'id' => 15,
+                    'book_id' => 5,
+                    'genre_id' => 5
+                ])
+            ]),
+            new Genre([
+                'id' => 8,
+                'name' => 'Fantasy',
+                'book_count' => 15,
+                'junction' => new Entity([
+                    'id' => 13,
+                    'book_id' => 5,
+                    'genre_id' => 8
+                ])
+            ]),
+        ]), $genres);
+
+        // Update the book, a genre, and add a new genre
+        $book->name = 'ADWD';
+
+        $genre1 = $genres[0];
+        $genre1->name = 'Action/Adventure';
+        $book->link($genre1);
+
+        $genre2 = new Genre();
+        $genre2->name = 'Drama';
+        $book->link($genre2);
+
+        $this->assertEquals(5, $book->save(['validate' => false]));
+
+        $this->assertEquals(new Book([
+            'id' => 5,
+            'series_id' => 1,
+            'name' => 'ADWD',
+            'isbn' => '0-553-80147-3',
+            'released' => '2011-07-19',
+            'Genres' => new EntityCollection([
+                new Genre([
+                    'id' => 3,
+                    'name' => 'Action/Adventure',
+                    'book_count' => 8,
+                    'junction' => new Entity([
+                        'id' => 14,
+                        'book_id' => 5,
+                        'genre_id' => 3
+                    ])
+                ]),
+                new Genre([
+                    'id' => 5,
+                    'name' => 'Horror',
+                    'book_count' => 5,
+                    'junction' => new Entity([
+                        'id' => 15,
+                        'book_id' => 5,
+                        'genre_id' => 5
+                    ])
+                ]),
+                new Genre([
+                    'id' => 8,
+                    'name' => 'Fantasy',
+                    'book_count' => 15,
+                    'junction' => new Entity([
+                        'id' => 13,
+                        'book_id' => 5,
+                        'genre_id' => 8
+                    ])
+                ]),
+                new Genre([
+                    'id' => 12,
+                    'name' => 'Drama',
+                    'book_count' => 0,
+                    'junction' => new Entity([
+                        'id' => 46,
+                        'book_id' => 5,
+                        'genre_id' => 12
+                    ])
+                ]),
+            ])
+        ]), Book::select()->with('Genres')->where('id', 5)->first());
     }
 
 }
