@@ -477,6 +477,21 @@ class Model implements Listener, Serializable, JsonSerializable, IteratorAggrega
     }
 
     /**
+     * Return a relation alias by checking against a fully qualified class name.
+     *
+     * @param string $class
+     * @return string
+     * @throws \Titon\Model\Exception\MissingRelationException
+     */
+    public function getAlias($class) {
+        if (empty($this->_aliases[$class])) {
+            throw new MissingRelationException(sprintf('No relation found for %s', $class));
+        }
+
+        return $this->_aliases[$class];
+    }
+
+    /**
      * Return an array of data that only includes attributes that have changed.
      *
      * @return array
@@ -819,13 +834,7 @@ class Model implements Listener, Serializable, JsonSerializable, IteratorAggrega
      * @throws \Titon\Model\Exception\MissingRelationException
      */
     public function link(Model $model) {
-        $class = get_class($model);
-
-        if (empty($this->_aliases[$class])) {
-            throw new MissingRelationException(sprintf('No relation found for %s', $class));
-        }
-
-        $this->getRelation($this->_aliases[$class])->link($model);
+        $this->getRelation($this->getAlias(get_class($model)))->link($model);
 
         return $this;
     }
@@ -1257,13 +1266,7 @@ class Model implements Listener, Serializable, JsonSerializable, IteratorAggrega
      * @throws \Titon\Model\Exception\MissingRelationException
      */
     public function unlink(Model $model) {
-        $class = get_class($model);
-
-        if (empty($this->_aliases[$class])) {
-            throw new MissingRelationException(sprintf('No relation found for %s', $class));
-        }
-
-        $this->getRelation($this->_aliases[$class])->unlink($model);
+        $this->getRelation($this->getAlias(get_class($model)))->unlink($model);
 
         return $this;
     }

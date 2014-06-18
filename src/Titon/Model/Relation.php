@@ -8,6 +8,7 @@
 namespace Titon\Model;
 
 use Titon\Common\Base;
+use Titon\Db\EntityCollection;
 use Titon\Db\Query;
 use Titon\Event\Event;
 use Titon\Event\Listener;
@@ -61,12 +62,11 @@ abstract class Relation extends Base implements Listener {
     protected $_eagerQuery;
 
     /**
-     * Related models that have been linked to the primary model.
-     * These links will be saved to the database alongside the primary model.
+     * Related models that will been linked to the primary model.
      *
-     * @type \Titon\Model\Model[]
+     * @type \Titon\Db\EntityCollection
      */
-    protected $_links = [];
+    protected $_links;
 
     /**
      * Primary model instance.
@@ -83,6 +83,13 @@ abstract class Relation extends Base implements Listener {
     protected $_relatedModel;
 
     /**
+     * Related models that will been unlinked from the primary model.
+     *
+     * @type \Titon\Db\EntityCollection
+     */
+    protected $_unlinks;
+
+    /**
      * Store the alias and class name.
      *
      * @param string $alias
@@ -94,6 +101,9 @@ abstract class Relation extends Base implements Listener {
 
         $this->setAlias($alias);
         $this->setRelatedClass($class);
+
+        $this->_links = new EntityCollection();
+        $this->_unlinks = new EntityCollection();
     }
 
     /**
@@ -188,9 +198,9 @@ abstract class Relation extends Base implements Listener {
     }
 
     /**
-     * Return all linked models.
+     * Return all models to be linked.
      *
-     * @return \Titon\Model\Model[]
+     * @return \Titon\Db\EntityCollection
      */
     public function getLinked() {
         return $this->_links;
@@ -278,16 +288,38 @@ abstract class Relation extends Base implements Listener {
     abstract public function getType();
 
     /**
+     * Return all models to be unlinked.
+     *
+     * @return \Titon\Db\EntityCollection
+     */
+    public function getUnlinked() {
+        return $this->_unlinks;
+    }
+
+    /**
      * Link a related model to the primary model.
      *
      * @param \Titon\Model\Model $model
      * @return $this
      */
     public function link(Model $model) {
-        $this->_links[] = $model;
+        $this->getLinked()->append($model);
 
         return $this;
     }
+
+    /**
+     * Save all the linked models and associate them to the primary model.
+     * If the save fails, throw an exception to break out of any transactions.
+     *
+     * This method is called through a `db.postSave` event and should not be called directly.
+     *
+     * @param \Titon\Event\Event $event
+     * @param int|int[] $id
+     * @param int $count
+     * @throws \Titon\Model\Exception\RelationQueryFailureException
+     */
+    abstract public function linkRelations(Event $event, $id, $count);
 
     /**
      * If the related model has been queried for eager loading, fetch the related records using the defined query.
@@ -317,23 +349,19 @@ abstract class Relation extends Base implements Listener {
     public function registerEvents() {
         // Repository callbacks use priority 1, so we should use 2
         return [
-            'db.postSave' => ['method' => 'saveLinked', 'priority' => 2], // Relations must be saved before anything else happens
+
+            // Relations must be saved before anything else happens
+            'db.postSave' => [
+                ['method' => 'linkRelations', 'priority' => 2],
+                ['method' => 'unlinkRelations', 'priority' => 2],
+            ],
+
             'db.postDelete' => ['method' => 'deleteDependents', 'priority' => 2],
-            'db.postFind' => ['method' => 'loadRelations', 'priority' => 2], // Relations should exist before anything else happens
+
+            // Relations should exist before anything else happens
+            'db.postFind' => ['method' => 'loadRelations', 'priority' => 2],
         ];
     }
-
-    /**
-     * Save all the linked models. If a save fails, throw an exception to break out of any transactions.
-     *
-     * This method is called through a `db.postSave` event and should not be called directly.
-     *
-     * @param \Titon\Event\Event $event
-     * @param int|int[] $id
-     * @param int $count
-     * @throws \Titon\Model\Exception\RelationQueryFailureException
-     */
-    abstract public function saveLinked(Event $event, $id, $count);
 
     /**
      * Set the alias name.
@@ -440,16 +468,22 @@ abstract class Relation extends Base implements Listener {
      * @return $this
      */
     public function unlink(Model $model) {
-        foreach ($this->getLinked() as $i => $link) {
-            if ($link === $model) {
-                unset($this->_links[$i]);
-            }
-        }
-
-        // Reorder indices
-        $this->_links = array_values($this->_links);
+        $this->getUnlinked()->append($model);
 
         return $this;
     }
+
+    /**
+     * Dissociate the models with the primary model be resetting foreign keys.
+     * If the save fails, throw an exception to break out of any transactions.
+     *
+     * This method is called through a `db.postSave` event and should not be called directly.
+     *
+     * @param \Titon\Event\Event $event
+     * @param int|int[] $id
+     * @param int $count
+     * @throws \Titon\Model\Exception\RelationQueryFailureException
+     */
+    abstract public function unlinkRelations(Event $event, $id, $count);
 
 }

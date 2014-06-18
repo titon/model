@@ -75,9 +75,33 @@ class OneToOne extends Relation {
      * @return $this
      */
     public function link(Model $model) {
-        $this->_links = [$model];
+        $this->getLinked()->flush()->append($model);
 
         return $this;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function linkRelations(Event $event, $id, $count) {
+        $links = $this->getLinked();
+        $rfk = $this->getRelatedForeignKey();
+
+        if (!$id || $links->isEmpty()) {
+            return;
+        }
+
+        // Reset the previous records
+        $this->query(Query::UPDATE)->where($rfk, $id)->save([$rfk => null]);
+
+        // Save the current record
+        $link = $links[0]->set($rfk, $id);
+
+        if (!$link->save(['validate' => false, 'atomic' => false, 'force' => true])) {
+            throw new RelationQueryFailureException(sprintf('Failed to link %s related record(s)', $this->getAlias()));
+        }
+
+        $links->flush();
     }
 
     /**
@@ -111,28 +135,34 @@ class OneToOne extends Relation {
     }
 
     /**
+     * Only one record at a time can be unlinked in a has one relation.
+     *
+     * @param \Titon\Model\Model $model
+     * @return $this
+     */
+    public function unlink(Model $model) {
+        $this->getUnlinked()->flush()->append($model);
+
+        return $this;
+    }
+
+    /**
      * {@inheritdoc}
      */
-    public function saveLinked(Event $event, $ids, $count) {
-        $links = $this->getLinked();
-        $rfk = $this->getRelatedForeignKey();
+    public function unlinkRelations(Event $event, $ids, $count) {
+        $links = $this->getUnlinked();
 
-        if (!$ids || !$links) {
+        if ($links->isEmpty()) {
             return;
         }
 
-        // Reset the previous records
-        $this->query(Query::UPDATE)->where($rfk, $ids)->save([$rfk => null]);
+        $link = $links[0]->set($this->getRelatedForeignKey(), null);
 
-        foreach ((array) $ids as $id) {
-            $link = $links[0]->set($rfk, $id);
-
-            if (!$link->save(['validate' => false, 'atomic' => false, 'force' => true])) {
-                throw new RelationQueryFailureException(sprintf('Failed to save %s related record(s)', $this->getAlias()));
-            }
+        if (!$link->save(['validate' => false, 'atomic' => false, 'force' => true])) {
+            throw new RelationQueryFailureException(sprintf('Failed to unlink %s related record(s)', $this->getAlias()));
         }
 
-        $this->_links = [];
+        $links->flush();
     }
 
 }

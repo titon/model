@@ -147,6 +147,52 @@ class ManyToMany extends Relation {
     /**
      * {@inheritdoc}
      */
+    public function linkRelations(Event $event, $ids, $count) {
+        $pfk = $this->getPrimaryForeignKey();
+        $rfk = $this->getRelatedForeignKey();
+        $links = $this->getLinked();
+
+        if (!$ids || $links->isEmpty()) {
+            return;
+        }
+
+        // Create a list of records that currently exist
+        $junction = $this->getJunctionRepository();
+        $newJunctions = [];
+        $currentJunctions = $junction->select()
+            ->where($pfk, $ids)
+            ->lists($pfk, $rfk);
+
+        foreach ((array) $ids as $id) {
+            foreach ($links as $link) {
+
+                // Save the related model in case the data has changed
+                if (!$link->save(['validate' => false, 'atomic' => false, 'force' => true])) {
+                    throw new RelationQueryFailureException(sprintf('Failed to link %s related record(s)', $this->getAlias()));
+                }
+
+                $link_id = $link->id();
+
+                // Check if the junction record exists
+                if (isset($currentJunctions[$link_id]) && $currentJunctions[$link_id] == $id) {
+                    continue;
+                }
+
+                $newJunctions[] = [$pfk => $id, $rfk => $link_id];
+            }
+        }
+
+        // Save all junctions with 1 query
+        if (!$junction->createMany($newJunctions)) {
+            throw new RelationQueryFailureException(sprintf('Failed to link %s junction record(s)', $this->getAlias()));
+        }
+
+        $links->flush();
+    }
+
+    /**
+     * {@inheritdoc}
+     */
     public function loadRelations(Event $event, array &$results, $finder) {
         $query = $this->getEagerQuery();
 
@@ -219,49 +265,6 @@ class ManyToMany extends Relation {
     }
 
     /**
-     * {@inheritdoc}
-     */
-    public function saveLinked(Event $event, $ids, $count) {
-        $pfk = $this->getPrimaryForeignKey();
-        $rfk = $this->getRelatedForeignKey();
-        $links = $this->getLinked();
-
-        if (!$ids || !$links) {
-            return;
-        }
-
-        // Create a list of records that currently exist
-        $junction = $this->getJunctionRepository();
-        $currentJunctions = $junction->select()
-            ->where($pfk, $ids)
-            ->lists($pfk, $rfk);
-
-        foreach ((array) $ids as $id) {
-            foreach ($links as $link) {
-
-                // Save the related model in case the data has changed
-                if (!$link->save(['validate' => false, 'atomic' => false, 'force' => true])) {
-                    throw new RelationQueryFailureException(sprintf('Failed to save %s related record(s)', $this->getAlias()));
-                }
-
-                $link_id = $link->id();
-
-                // Check if the junction record exists
-                if (isset($currentJunctions[$link_id]) && $currentJunctions[$link_id] == $id) {
-                    continue;
-                }
-
-                // Save a new junction record
-                if (!$junction->create([$pfk => $id, $rfk => $link_id])) {
-                    throw new RelationQueryFailureException(sprintf('Failed to save %s junction record(s)', $this->getAlias()));
-                }
-            }
-        }
-
-        $this->_links = [];
-    }
-
-    /**
      * Set the junction table name.
      *
      * @param string|array $table
@@ -287,6 +290,27 @@ class ManyToMany extends Relation {
         $this->_junction = $repo;
 
         return $this;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function unlinkRelations(Event $event, $ids, $count) {
+        $links = $this->getUnlinked();
+
+        if ($links->isEmpty()) {
+            return;
+        }
+
+        $rfk = $this->getRelatedForeignKey();
+        $ids = $links->pluck($this->getRelatedModel()->getPrimaryKey());
+
+        // Delete the junction records for the unlinked models
+        $this->getJunctionRepository()->deleteMany(function(Query $query) use ($rfk, $ids) {
+            $query->where($rfk, $ids);
+        });
+
+        $links->flush();
     }
 
 }

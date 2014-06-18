@@ -57,27 +57,4 @@ class ManyToManyTest extends TestCase {
         $this->assertSame($repo, $this->object->getJunctionRepository());
     }
 
-    public function testLinkUnlink() {
-        $model1 = new User(['foo' => 'bar']);
-        $model2 = new User(['bar' => 'foo']);
-
-        $this->assertEquals([], $this->object->getLinked());
-
-        $this->object->link($model1);
-
-        $this->assertEquals([$model1], $this->object->getLinked());
-
-        $this->object->link($model2);
-
-        $this->assertEquals([$model1, $model2], $this->object->getLinked());
-
-        $this->object->unlink($model1);
-
-        $this->assertEquals([$model2], $this->object->getLinked());
-
-        $this->object->unlink($model2);
-
-        $this->assertEquals([], $this->object->getLinked());
-    }
-
 }

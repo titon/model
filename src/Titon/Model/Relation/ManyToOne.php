@@ -74,11 +74,30 @@ class ManyToOne extends Relation {
      * @return $this
      */
     public function link(Model $model) {
-        $this->_links = [$model];
+        $this->getLinked()->flush()->append($model);
 
         $this->getPrimaryModel()->set($this->getPrimaryForeignKey(), $model->id());
 
         return $this;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function linkRelations(Event $event, $ids, $count) {
+        $links = $this->getLinked();
+
+        if ($links->isEmpty()) {
+            return;
+        }
+
+        foreach ($links as $link) {
+            if (!$link->save(['validate' => false, 'atomic' => false, 'force' => true])) {
+                throw new RelationQueryFailureException(sprintf('Failed to link %s related record(s)', $this->getAlias()));
+            }
+        }
+
+        $links->flush();
     }
 
     /**
@@ -113,16 +132,37 @@ class ManyToOne extends Relation {
     }
 
     /**
+     * Only one record at a time can be unlinked in a belongs to relation.
+     * Also reset the foreign key attribute in the primary model.
+     *
+     * @param \Titon\Model\Model $model
+     * @return $this
+     */
+    public function unlink(Model $model) {
+        $this->getUnlinked()->flush()->append($model);
+
+        $this->getPrimaryModel()->set($this->getPrimaryForeignKey(), null);
+
+        return $this;
+    }
+
+    /**
      * {@inheritdoc}
      */
-    public function saveLinked(Event $event, $ids, $count) {
-        foreach ($this->getLinked() as $link) {
+    public function unlinkRelations(Event $event, $ids, $count) {
+        $links = $this->getUnlinked();
+
+        if ($links->isEmpty()) {
+            return;
+        }
+
+        foreach ($links as $link) {
             if (!$link->save(['validate' => false, 'atomic' => false, 'force' => true])) {
-                throw new RelationQueryFailureException(sprintf('Failed to save %s related record(s)', $this->getAlias()));
+                throw new RelationQueryFailureException(sprintf('Failed to unlink %s related record(s)', $this->getAlias()));
             }
         }
 
-        $this->_links = [];
+        $links->flush();
     }
 
 }

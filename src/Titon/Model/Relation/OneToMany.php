@@ -70,6 +70,30 @@ class OneToMany extends Relation {
     /**
      * {@inheritdoc}
      */
+    public function linkRelations(Event $event, $ids, $count) {
+        $rfk = $this->getRelatedForeignKey();
+        $links = $this->getLinked();
+
+        if (!$ids || $links->isEmpty()) {
+            return;
+        }
+
+        foreach ((array) $ids as $id) {
+            foreach ($links as $link) {
+                $link->set($rfk, $id);
+
+                if (!$link->save(['validate' => false, 'atomic' => false, 'force' => true])) {
+                    throw new RelationQueryFailureException(sprintf('Failed to link %s related record(s)', $this->getAlias()));
+                }
+            }
+        }
+
+        $links->flush();
+    }
+
+    /**
+     * {@inheritdoc}
+     */
     public function loadRelations(Event $event, array &$results, $finder) {
         $query = $this->getEagerQuery();
 
@@ -103,25 +127,19 @@ class OneToMany extends Relation {
     /**
      * {@inheritdoc}
      */
-    public function saveLinked(Event $event, $ids, $count) {
+    public function unlinkRelations(Event $event, $ids, $count) {
         $rfk = $this->getRelatedForeignKey();
-        $links = $this->getLinked();
+        $links = $this->getUnlinked();
 
-        if (!$ids || !$links) {
+        if (!$ids || $links->isEmpty()) {
             return;
         }
 
-        foreach ((array) $ids as $id) {
-            foreach ($links as $link) {
-                $link->set($rfk, $id);
+        $this->query(Query::UPDATE)
+            ->where($rfk, $links->pluck($this->getRelatedModel()->getPrimaryKey()))
+            ->save([$rfk => null]);
 
-                if (!$link->save(['validate' => false, 'atomic' => false, 'force' => true])) {
-                    throw new RelationQueryFailureException(sprintf('Failed to save %s related record(s)', $this->getAlias()));
-                }
-            }
-        }
-
-        $this->_links = [];
+        $links->flush();
     }
 
 }
