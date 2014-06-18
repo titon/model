@@ -7,12 +7,11 @@
 
 namespace Titon\Model\Relation;
 
-use Titon\Db\EntityCollection;
 use Titon\Event\Event;
 use Titon\Model\Exception\RelationQueryFailureException;
 use Titon\Model\Model;
+use Titon\Model\ModelCollection;
 use Titon\Model\Relation;
-use Titon\Utility\Hash;
 
 /**
  * Represents a many-to-one table relationship.
@@ -118,7 +117,7 @@ class ManyToOne extends Relation {
         $alias = $this->getAlias();
 
         $relatedResults = $query
-            ->where($rpk, (new EntityCollection($results))->pluck($pfk))
+            ->where($rpk, (new ModelCollection($results))->pluck($pfk))
             ->bindCallback($this->getConditions())
             ->all();
 

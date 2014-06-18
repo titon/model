@@ -7,13 +7,12 @@
 
 namespace Titon\Model\Relation;
 
-use Titon\Db\EntityCollection;
 use Titon\Db\Query;
 use Titon\Db\Repository;
 use Titon\Event\Event;
 use Titon\Model\Exception\RelationQueryFailureException;
+use Titon\Model\ModelCollection;
 use Titon\Model\Relation;
-use Titon\Utility\Hash;
 
 /**
  * Represents a many-to-many table relationship.
@@ -206,7 +205,7 @@ class ManyToMany extends Relation {
         // Fetch junction records
         $ppk = $this->getPrimaryModel()->getPrimaryKey();
         $pfk = $this->getPrimaryForeignKey();
-        $pids = (new EntityCollection($results))->pluck($ppk);
+        $pids = (new ModelCollection($results))->pluck($ppk);
 
         $junctionResults = $this->getJunctionRepository()
             ->select()
@@ -260,7 +259,7 @@ class ManyToMany extends Relation {
                 $relatedMerged[] = $matchedEntity;
             };
 
-            $results[$i][$alias] = new EntityCollection($relatedMerged);
+            $results[$i][$alias] = new ModelCollection($relatedMerged);
         }
     }
 

@@ -4,7 +4,6 @@ namespace Titon\Model;
 use Titon\Common\Config;
 use Titon\Db\Database;
 use Titon\Db\Entity;
-use Titon\Db\EntityCollection;
 use Titon\Db\Mysql\MysqlDriver;
 use Titon\Db\Query;
 use Titon\Db\Repository;

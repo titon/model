@@ -8,10 +8,10 @@
 namespace Titon\Model;
 
 use Titon\Common\Base;
-use Titon\Db\EntityCollection;
 use Titon\Db\Query;
 use Titon\Event\Event;
 use Titon\Event\Listener;
+use Titon\Model\ModelCollection;
 use Titon\Utility\Inflector;
 use Titon\Utility\Path;
 use \Closure;
@@ -64,7 +64,7 @@ abstract class Relation extends Base implements Listener {
     /**
      * Related models that will been linked to the primary model.
      *
-     * @type \Titon\Db\EntityCollection
+     * @type \Titon\Model\ModelCollection
      */
     protected $_links;
 
@@ -85,7 +85,7 @@ abstract class Relation extends Base implements Listener {
     /**
      * Related models that will been unlinked from the primary model.
      *
-     * @type \Titon\Db\EntityCollection
+     * @type \Titon\Model\ModelCollection
      */
     protected $_unlinks;
 
@@ -102,8 +102,8 @@ abstract class Relation extends Base implements Listener {
         $this->setAlias($alias);
         $this->setRelatedClass($class);
 
-        $this->_links = new EntityCollection();
-        $this->_unlinks = new EntityCollection();
+        $this->_links = new ModelCollection();
+        $this->_unlinks = new ModelCollection();
     }
 
     /**
@@ -200,7 +200,7 @@ abstract class Relation extends Base implements Listener {
     /**
      * Return all models to be linked.
      *
-     * @return \Titon\Db\EntityCollection
+     * @return \Titon\Model\ModelCollection
      */
     public function getLinked() {
         return $this->_links;
@@ -290,7 +290,7 @@ abstract class Relation extends Base implements Listener {
     /**
      * Return all models to be unlinked.
      *
-     * @return \Titon\Db\EntityCollection
+     * @return \Titon\Model\ModelCollection
      */
     public function getUnlinked() {
         return $this->_unlinks;

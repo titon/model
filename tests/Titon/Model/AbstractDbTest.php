@@ -3,7 +3,6 @@ namespace Titon\Model;
 
 use Titon\Db\Database;
 use Titon\Db\Entity;
-use Titon\Db\EntityCollection;
 use Titon\Db\Query;
 use Titon\Db\Repository;
 use Titon\Test\Stub\Model\Book;
@@ -216,7 +215,7 @@ abstract class AbstractDbTest extends TestCase {
             'id' => 4,
             'author_id' => 0,
             'name' => 'A Series Of Unfortunate Events',
-            'Books' => new EntityCollection([
+            'Books' => new ModelCollection([
                 new Book(['id' => 16, 'series_id' => 4, 'name' => 'The Bad Beginning', 'isbn' => '', 'released' => '']),
                 new Book(['id' => 17, 'series_id' => 4, 'name' => 'The Reptile Room', 'isbn' => '', 'released' => '']),
                 new Book(['id' => 18, 'series_id' => 4, 'name' => 'The Wide Window', 'isbn' => '', 'released' => '']),
@@ -243,7 +242,7 @@ abstract class AbstractDbTest extends TestCase {
             'id' => 4,
             'author_id' => 0,
             'name' => 'A Series Of Unfortunate Events',
-            'Books' => new EntityCollection([
+            'Books' => new ModelCollection([
                 new Book(['id' => 16, 'series_id' => 4, 'name' => 'The Bad Beginning', 'isbn' => '', 'released' => '']),
                 new Book(['id' => 17, 'series_id' => 4, 'name' => 'The Reptile Room', 'isbn' => '', 'released' => '']),
                 new Book(['id' => 18, 'series_id' => 4, 'name' => 'The Wide Window', 'isbn' => '', 'released' => '']),
@@ -314,7 +313,7 @@ abstract class AbstractDbTest extends TestCase {
             'name' => 'The Winds of Winter',
             'isbn' => '',
             'released' => '',
-            'Genres' => new EntityCollection([
+            'Genres' => new ModelCollection([
                 new Genre([
                     'id' => 3,
                     'name' => 'Action-Adventure',
@@ -418,7 +417,7 @@ abstract class AbstractDbTest extends TestCase {
             'id' => 1,
             'author_id' => 1,
             'name' => 'A Song of Ice and Fire',
-            'Books' => new EntityCollection([
+            'Books' => new ModelCollection([
                 new Book(['id' => 1, 'series_id' => 1, 'name' => 'A Game of Thrones', 'isbn' => '0-553-10354-7', 'released' => '1996-08-02']),
                 new Book(['id' => 2, 'series_id' => 1, 'name' => 'A Clash of Kings', 'isbn' => '0-553-10803-4', 'released' => '1999-02-25']),
                 new Book(['id' => 3, 'series_id' => 1, 'name' => 'A Storm of Swords', 'isbn' => '0-553-10663-5', 'released' => '2000-11-11']),
@@ -435,7 +434,7 @@ abstract class AbstractDbTest extends TestCase {
 
         $books = Book::select()->where('series_id', null)->orderBy('id', 'asc')->all();
 
-        $this->assertEquals(new EntityCollection([
+        $this->assertEquals(new ModelCollection([
             new Book(['id' => 1, 'series_id' => null, 'name' => 'A Game of Thrones', 'isbn' => '0-553-10354-7', 'released' => '1996-08-02']),
             new Book(['id' => 2, 'series_id' => null, 'name' => 'A Clash of Kings', 'isbn' => '0-553-10803-4', 'released' => '1999-02-25']),
             new Book(['id' => 3, 'series_id' => null, 'name' => 'A Storm of Swords', 'isbn' => '0-553-10663-5', 'released' => '2000-11-11']),
@@ -499,7 +498,7 @@ abstract class AbstractDbTest extends TestCase {
             'name' => 'A Dance with Dragons',
             'isbn' => '0-553-80147-3',
             'released' => '2011-07-19',
-            'Genres' => new EntityCollection([
+            'Genres' => new ModelCollection([
                 new Genre([
                     'id' => 3,
                     'name' => 'Action-Adventure',
@@ -595,7 +594,7 @@ abstract class AbstractDbTest extends TestCase {
 
         $books = $series->Books;
 
-        $this->assertEquals(new EntityCollection([
+        $this->assertEquals(new ModelCollection([
             new Book(['id' => 1, 'series_id' => 1, 'name' => 'A Game of Thrones', 'isbn' => '0-553-10354-7', 'released' => '1996-08-02']),
             new Book(['id' => 2, 'series_id' => 1, 'name' => 'A Clash of Kings', 'isbn' => '0-553-10803-4', 'released' => '1999-02-25']),
             new Book(['id' => 3, 'series_id' => 1, 'name' => 'A Storm of Swords', 'isbn' => '0-553-10663-5', 'released' => '2000-11-11']),
@@ -646,7 +645,7 @@ abstract class AbstractDbTest extends TestCase {
 
         $genres = $book->Genres;
 
-        $this->assertEquals(new EntityCollection([
+        $this->assertEquals(new ModelCollection([
             new Genre([
                 'id' => 3,
                 'name' => 'Action-Adventure',
@@ -797,7 +796,7 @@ abstract class AbstractDbTest extends TestCase {
             ->orderBy('id', 'asc')
             ->all();
 
-        $this->assertEquals(new EntityCollection([
+        $this->assertEquals(new ModelCollection([
              new User([
                 'id' => 1,
                 'username' => 'miles',
@@ -853,7 +852,7 @@ abstract class AbstractDbTest extends TestCase {
             'id' => 1,
             'author_id' => 1,
             'name' => 'A Song of Ice and Fire',
-            'Books' => new EntityCollection([
+            'Books' => new ModelCollection([
                 new Book(['id' => 1, 'series_id' => 1, 'name' => 'A Game of Thrones', 'isbn' => '0-553-10354-7', 'released' => '1996-08-02']),
                 new Book(['id' => 2, 'series_id' => 1, 'name' => 'A Clash of Kings', 'isbn' => '0-553-10803-4', 'released' => '1999-02-25']),
                 new Book(['id' => 3, 'series_id' => 1, 'name' => 'A Storm of Swords', 'isbn' => '0-553-10663-5', 'released' => '2000-11-11']),
@@ -872,12 +871,12 @@ abstract class AbstractDbTest extends TestCase {
             ->orderBy('id', 'asc')
             ->all();
 
-        $this->assertEquals(new EntityCollection([
+        $this->assertEquals(new ModelCollection([
              new Series([
                 'id' => 1,
                 'author_id' => 1,
                 'name' => 'A Song of Ice and Fire',
-                'Books' => new EntityCollection([
+                'Books' => new ModelCollection([
                     new Book(['id' => 1, 'series_id' => 1, 'name' => 'A Game of Thrones', 'isbn' => '0-553-10354-7', 'released' => '1996-08-02']),
                     new Book(['id' => 2, 'series_id' => 1, 'name' => 'A Clash of Kings', 'isbn' => '0-553-10803-4', 'released' => '1999-02-25']),
                     new Book(['id' => 3, 'series_id' => 1, 'name' => 'A Storm of Swords', 'isbn' => '0-553-10663-5', 'released' => '2000-11-11']),
@@ -889,7 +888,7 @@ abstract class AbstractDbTest extends TestCase {
                 'id' => 3,
                 'author_id' => 3,
                 'name' => 'The Lord of the Rings',
-                'Books' => new EntityCollection([
+                'Books' => new ModelCollection([
                     new Book(['id' => 13, 'series_id' => 3, 'name' => 'The Fellowship of the Ring', 'isbn' => '', 'released' => '1954-07-24']),
                     new Book(['id' => 14, 'series_id' => 3, 'name' => 'The Two Towers', 'isbn' => '', 'released' => '1954-11-11']),
                     new Book(['id' => 15, 'series_id' => 3, 'name' => 'The Return of the King', 'isbn' => '', 'released' => '1955-10-25']),
@@ -934,7 +933,7 @@ abstract class AbstractDbTest extends TestCase {
             ->orderBy('id', 'asc')
             ->all();
 
-        $this->assertEquals(new EntityCollection([
+        $this->assertEquals(new ModelCollection([
              new User([
                 'id' => 1,
                 'username' => 'miles',
@@ -1002,7 +1001,7 @@ abstract class AbstractDbTest extends TestCase {
             'name' => 'A Dance with Dragons',
             'isbn' => '0-553-80147-3',
             'released' => '2011-07-19',
-            'Genres' => new EntityCollection([
+            'Genres' => new ModelCollection([
                 new Genre([
                     'id' => 3,
                     'name' => 'Action-Adventure',
@@ -1045,14 +1044,14 @@ abstract class AbstractDbTest extends TestCase {
             ->with('Genres')
             ->all();
 
-        $this->assertEquals(new EntityCollection([
+        $this->assertEquals(new ModelCollection([
             new Book([
                 'id' => 13,
                 'series_id' => 3,
                 'name' => 'The Fellowship of the Ring',
                 'isbn' => '',
                 'released' => '1954-07-24',
-                'Genres' => new EntityCollection([
+                'Genres' => new ModelCollection([
                     new Genre([
                         'id' => 3,
                         'name' => 'Action-Adventure',
@@ -1091,7 +1090,7 @@ abstract class AbstractDbTest extends TestCase {
                 'name' => 'The Two Towers',
                 'isbn' => '',
                 'released' => '1954-11-11',
-                'Genres' => new EntityCollection([
+                'Genres' => new ModelCollection([
                     new Genre([
                         'id' => 3,
                         'name' => 'Action-Adventure',
@@ -1130,7 +1129,7 @@ abstract class AbstractDbTest extends TestCase {
                 'name' => 'The Return of the King',
                 'isbn' => '',
                 'released' => '1955-10-25',
-                'Genres' => new EntityCollection([
+                'Genres' => new ModelCollection([
                     new Genre([
                         'id' => 3,
                         'name' => 'Action-Adventure',
@@ -1336,7 +1335,7 @@ abstract class AbstractDbTest extends TestCase {
 
         $books = $series->Books;
 
-        $this->assertEquals(new EntityCollection([
+        $this->assertEquals(new ModelCollection([
             new Book(['id' => 1, 'series_id' => 1, 'name' => 'A Game of Thrones', 'isbn' => '0-553-10354-7', 'released' => '1996-08-02']),
             new Book(['id' => 2, 'series_id' => 1, 'name' => 'A Clash of Kings', 'isbn' => '0-553-10803-4', 'released' => '1999-02-25']),
             new Book(['id' => 3, 'series_id' => 1, 'name' => 'A Storm of Swords', 'isbn' => '0-553-10663-5', 'released' => '2000-11-11']),
@@ -1358,7 +1357,7 @@ abstract class AbstractDbTest extends TestCase {
             'id' => 1,
             'author_id' => 1,
             'name' => 'ASOIAF',
-            'Books' => new EntityCollection([
+            'Books' => new ModelCollection([
                 new Book(['id' => 1, 'series_id' => 1, 'name' => 'GOT', 'isbn' => '0-553-10354-7', 'released' => '1996-08-02']),
                 new Book(['id' => 2, 'series_id' => 1, 'name' => 'A Clash of Kings', 'isbn' => '0-553-10803-4', 'released' => '1999-02-25']),
                 new Book(['id' => 3, 'series_id' => 1, 'name' => 'A Storm of Swords', 'isbn' => '0-553-10663-5', 'released' => '2000-11-11']),
@@ -1417,7 +1416,7 @@ abstract class AbstractDbTest extends TestCase {
 
         $genres = $book->Genres;
 
-        $this->assertEquals(new EntityCollection([
+        $this->assertEquals(new ModelCollection([
             new Genre([
                 'id' => 3,
                 'name' => 'Action-Adventure',
@@ -1469,7 +1468,7 @@ abstract class AbstractDbTest extends TestCase {
             'name' => 'ADWD',
             'isbn' => '0-553-80147-3',
             'released' => '2011-07-19',
-            'Genres' => new EntityCollection([
+            'Genres' => new ModelCollection([
                 new Genre([
                     'id' => 3,
                     'name' => 'Action/Adventure',

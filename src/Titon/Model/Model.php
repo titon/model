@@ -568,7 +568,8 @@ class Model implements Listener, Serializable, JsonSerializable, IteratorAggrega
             'prefix' => $this->prefix,
             'primaryKey' => $this->primaryKey,
             'displayField' => $this->displayField,
-            'entity' => get_class($this)
+            'entity' => get_class($this),
+            'collection' => 'Titon\Model\ModelCollection'
         ]));
 
         return $this->_repository;

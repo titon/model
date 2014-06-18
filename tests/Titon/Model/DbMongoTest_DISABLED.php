@@ -10,7 +10,6 @@ namespace Titon\Model;
 use Exception;
 use Titon\Common\Config;
 use Titon\Db\Database;
-use Titon\Db\EntityCollection;
 use Titon\Db\Mongo\MongoDriver;
 use Titon\Db\Query;
 use Titon\Test\Stub\Model\Book;
@@ -162,7 +161,7 @@ class DbMongoTestDISABLED extends TestCase {
         ]), Book::select('series_id', 'name', 'isbn', 'released')->orderBy('_id', 'asc')->first());
 
         // Multiple
-        $this->assertEquals(new EntityCollection([
+        $this->assertEquals(new ModelCollection([
             new Book([
                 'series_id' => 3,
                 'name' => 'The Fellowship of the Ring',
@@ -249,7 +248,7 @@ class DbMongoTestDISABLED extends TestCase {
             $query->where('country_id', '!=', 1);
         }));
 
-        $this->assertEquals(new EntityCollection([
+        $this->assertEquals(new ModelCollection([
             new User(['country_id' => 1, 'username' => 'miles']),
             new User(['country_id' => 1, 'username' => 'batman']),
             new User(['country_id' => 1, 'username' => 'superman']),
@@ -262,7 +261,7 @@ class DbMongoTestDISABLED extends TestCase {
             $query->where('country_id', '!=', 1000); // high number = all
         }));
 
-        $this->assertEquals(new EntityCollection([
+        $this->assertEquals(new ModelCollection([
             new User(['country_id' => 2, 'username' => 'miles']),
             new User(['country_id' => 2, 'username' => 'batman']),
             new User(['country_id' => 2, 'username' => 'superman']),

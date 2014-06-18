@@ -7,12 +7,11 @@
 
 namespace Titon\Model\Relation;
 
-use Titon\Db\EntityCollection;
 use Titon\Db\Query;
 use Titon\Event\Event;
 use Titon\Model\Exception\RelationQueryFailureException;
+use Titon\Model\ModelCollection;
 use Titon\Model\Relation;
-use Titon\Utility\Hash;
 
 /**
  * Represents a one-to-many table relationship.
@@ -109,7 +108,7 @@ class OneToMany extends Relation {
         $alias = $this->getAlias();
 
         $relatedResults = $query
-            ->where($rfk, (new EntityCollection($results))->pluck($ppk))
+            ->where($rfk, (new ModelCollection($results))->pluck($ppk))
             ->bindCallback($this->getConditions())
             ->all();
 

@@ -2,7 +2,6 @@
 namespace Titon\Model;
 
 use Titon\Db\Behavior\TimestampBehavior;
-use Titon\Db\EntityCollection;
 use Titon\Db\Query;
 use Titon\Model\Relation\ManyToMany;
 use Titon\Model\Relation\ManyToOne;
@@ -437,7 +436,7 @@ class ModelTest extends TestCase {
 
         $this->object->link($profile);
 
-        $this->assertEquals(new EntityCollection([$profile]), $this->object->getRelation('Profile')->getLinked());
+        $this->assertEquals(new ModelCollection([$profile]), $this->object->getRelation('Profile')->getLinked());
     }
 
     /**
@@ -454,7 +453,7 @@ class ModelTest extends TestCase {
 
         $book->linkMany($genre1, $genre2);
 
-        $this->assertEquals(new EntityCollection([$genre1, $genre2]), $book->getRelation('Genres')->getLinked());
+        $this->assertEquals(new ModelCollection([$genre1, $genre2]), $book->getRelation('Genres')->getLinked());
     }
 
     public function testLinkManyArray() {
@@ -464,7 +463,7 @@ class ModelTest extends TestCase {
 
         $book->linkMany([$genre1, $genre2]);
 
-        $this->assertEquals(new EntityCollection([$genre1, $genre2]), $book->getRelation('Genres')->getLinked());
+        $this->assertEquals(new ModelCollection([$genre1, $genre2]), $book->getRelation('Genres')->getLinked());
     }
 
     public function testLoadRelationships() {
@@ -659,7 +658,7 @@ class ModelTest extends TestCase {
 
         $this->object->unlink($profile);
 
-        $this->assertEquals(new EntityCollection([$profile]), $this->object->getRelation('Profile')->getUnlinked());
+        $this->assertEquals(new ModelCollection([$profile]), $this->object->getRelation('Profile')->getUnlinked());
     }
 
     /**
@@ -676,7 +675,7 @@ class ModelTest extends TestCase {
 
         $book->unlinkMany($genre1, $genre2);
 
-        $this->assertEquals(new EntityCollection([$genre1, $genre2]), $book->getRelation('Genres')->getUnlinked());
+        $this->assertEquals(new ModelCollection([$genre1, $genre2]), $book->getRelation('Genres')->getUnlinked());
     }
 
     public function testUnlinkManyArray() {
@@ -686,7 +685,7 @@ class ModelTest extends TestCase {
 
         $book->unlinkMany([$genre1, $genre2]);
 
-        $this->assertEquals(new EntityCollection([$genre1, $genre2]), $book->getRelation('Genres')->getUnlinked());
+        $this->assertEquals(new ModelCollection([$genre1, $genre2]), $book->getRelation('Genres')->getUnlinked());
     }
 
     public function testValidate() {

@@ -10,7 +10,7 @@ use \Closure;
  * Class QueryBuilder
  *
  * @package Titon\Model
- * @method \Titon\Db\EntityCollection all(array $options = [])
+ * @method \Titon\Model\ModelCollection all(array $options = [])
  * @method \Titon\Model\QueryBuilder attribute(string $key, mixed $value)
  * @method int avg(string $field)
  * @method \Titon\Model\QueryBuilder bindCallback(callable $callback, mixed $argument = null)
@@ -20,7 +20,7 @@ use \Closure;
  * @method \Titon\Model\QueryBuilder distinct()
  * @method \Titon\Model\QueryBuilder except($query, string $flag)
  * @method \Titon\Model\QueryBuilder fields(array $fields, bool $merge = false)
- * @method \Titon\Db\EntityCollection|\Titon\Model\Model|array find(string $type, array $options = [])
+ * @method \Titon\Model\ModelCollection|\Titon\Model\Model|array find(string $type, array $options = [])
  * @method \Titon\Model\Model first(array $options = [])
  * @method \Titon\Model\QueryBuilder from(string $table, string $alias = '')
  * @method \Titon\Model\QueryBuilder groupBy()
